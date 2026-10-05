@@ -1,4 +1,5 @@
 import time
+from typing import Any
 
 import numpy as np
 
@@ -101,7 +102,7 @@ class FakeTruncatedAnswerProvider(FakeToolCallingProvider):
     def __init__(self, retry_text: str | None):
         super().__init__(["retrieval"])
         self.retry_text = retry_text
-        self.generate_calls = []
+        self.generate_calls: list[dict[str, Any]] = []
 
     def generate(self, prompt, num_predict=None):
         self.generate_calls.append({"prompt": prompt, "num_predict": num_predict})

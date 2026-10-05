@@ -5,7 +5,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Protocol
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -19,6 +19,17 @@ AGENT_VERSION = "wallet_risk_agent_v1"
 ADDRESS_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 INTENTS = {"score", "explain", "documents", "combined", "general", "unsupported"}
 ALLOWED_TOOL_NAMES = ("scoring", "shap", "retrieval")
+
+
+class RetrieverBackend(Protocol):
+    def search_bm25(
+        self,
+        query: str,
+        wallet_address: str | None = None,
+        include_general: bool = False,
+        top_k: int = 3,
+    ) -> list[RetrievalHit]:
+        ...
 
 
 class AgentRequest(BaseModel):
@@ -494,7 +505,7 @@ class WalletRiskAgent:
         explainer=None,
         feature_names: list[str] | None = None,
         preprocessing: dict[str, Any] | None = None,
-        retriever: LocalDenseRetriever | None = None,
+        retriever: RetrieverBackend | None = None,
         llm_provider=None,
         max_steps: int = 8,
         tool_timeout_seconds: float = 3.0,

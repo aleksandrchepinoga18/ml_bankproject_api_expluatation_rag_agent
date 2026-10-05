@@ -161,7 +161,7 @@ def validation_guard_examples(agent, wallet_address: str) -> list[dict[str, Any]
         supported=True,
         synthetic_demo=False,
     )
-    unsupported_state = {
+    unsupported_state: dict[str, Any] = {
         "wallet_address": wallet_address,
         "sources": [
             SourceRef(
@@ -181,7 +181,7 @@ def validation_guard_examples(agent, wallet_address: str) -> list[dict[str, Any]
     }
     agent._validate_answer(unsupported_state)
 
-    forbidden_state = {
+    forbidden_state: dict[str, Any] = {
         "sources": [],
         "document_hits": [],
         "document_findings": [],

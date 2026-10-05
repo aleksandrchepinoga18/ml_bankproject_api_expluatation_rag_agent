@@ -197,7 +197,7 @@ class LocalDenseRetriever:
         self._doc_tokens = [_token_list(record["payload"]["text"]) for record in self.records]
         self._doc_lengths = [len(tokens) for tokens in self._doc_tokens]
         self._avg_doc_length = sum(self._doc_lengths) / max(len(self._doc_lengths), 1)
-        self._bm25_doc_freq = Counter()
+        self._bm25_doc_freq: Counter[str] = Counter()
         for tokens in self._doc_tokens:
             self._bm25_doc_freq.update(set(tokens))
         self.last_elapsed_ms = 0.0

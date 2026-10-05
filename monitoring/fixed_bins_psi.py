@@ -31,7 +31,7 @@ def fixed_reference_edges(reference: pd.Series, bins: int = 10) -> list[float]:
 
 
 def serializable_edges(edges: list[float]) -> list[float | str]:
-    values = []
+    values: list[float | str] = []
     for edge in edges:
         if edge == -np.inf:
             values.append("-inf")

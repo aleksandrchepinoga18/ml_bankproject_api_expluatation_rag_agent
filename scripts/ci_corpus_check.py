@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -8,7 +9,7 @@ CORPUS_DIR = PROJECT_ROOT / "data" / "corpus"
 INDEX_PATH = PROJECT_ROOT / "data" / "vector_index" / "local_dense_index.json"
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
