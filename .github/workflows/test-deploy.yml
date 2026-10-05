@@ -1,0 +1,89 @@
+name: Test Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only, do not push an image"
+        required: true
+        type: boolean
+        default: true
+      confirm_deploy:
+        description: "Allow publishing a test image when dry_run is false"
+        required: true
+        type: boolean
+        default: false
+      image_name:
+        description: "Container image name under ghcr.io/<owner>"
+        required: true
+        type: string
+        default: wallet-risk-api
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: test-deployment
+  cancel-in-progress: false
+
+jobs:
+  test-deploy:
+    name: Protected Test Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: test
+
+    env:
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}
+      IMAGE_SHA_TAG: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}:${{ github.sha }}
+      IMAGE_TEST_TAG: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}:test-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require explicit deploy confirmation
+        if: ${{ inputs.dry_run == false && inputs.confirm_deploy == false }}
+        run: |
+          echo "dry_run=false requires confirm_deploy=true."
+          exit 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ inputs.dry_run == false }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ inputs.dry_run == false }}
+          load: false
+          tags: |
+            ${{ env.IMAGE_SHA_TAG }}
+            ${{ env.IMAGE_TEST_TAG }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Report image version
+        run: |
+          echo "Built image revision: ${{ github.sha }}"
+          echo "SHA tag: $IMAGE_SHA_TAG"
+          echo "Moving test tag: $IMAGE_TEST_TAG"
+          echo "dry_run=${{ inputs.dry_run }}"
+
+      - name: Test deployment handoff
+        run: |
+          echo "No remote test runtime is configured in this repository."
+          echo "The protected workflow prepares or publishes a SHA-tagged test image only."
+          echo "Use docs/cicd_test_deployment.md for test-host pull, smoke, and rollback commands."

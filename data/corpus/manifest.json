@@ -1,0 +1,548 @@
+{
+  "chunk_count": 49,
+  "corpus_version": "demo_corpus_v1",
+  "created_at": "2026-09-29T00:00:00Z",
+  "dataset_path": "data/dataset.parquet",
+  "document_count": 29,
+  "documents": [
+    {
+      "chunk_ids": [
+        "derived_wallet_001::chunk_001",
+        "derived_wallet_001::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_001",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_001.md",
+      "snapshot_time": "2022-08-17T00:19:15Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        359374
+      ],
+      "text_hash": "E851A5C8F3BD7D3402376A02D973BE2D3E2FA906D4B906F06195C5DA1889EF91",
+      "title": "Observation card derived_wallet_001",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_002::chunk_001",
+        "derived_wallet_002::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_002",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_002.md",
+      "snapshot_time": "2021-06-07T19:45:11Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        208173
+      ],
+      "text_hash": "71DAD997914F876DD70C6F76BF99EF2818A132B4BAF5C84DE9C8163E23670BB7",
+      "title": "Observation card derived_wallet_002",
+      "wallet_address": "0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_003::chunk_001",
+        "derived_wallet_003::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_003",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_003.md",
+      "snapshot_time": "2020-09-25T06:36:51Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        73730
+      ],
+      "text_hash": "4D4857E71A749CC3B0DE00DC7D3FDBA7EF240CC3DD233BF195B87263E6A640BB",
+      "title": "Observation card derived_wallet_003",
+      "wallet_address": "0x3548ca2f774b5b36c7758d191ba62f1ddfc50649"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_004::chunk_001",
+        "derived_wallet_004::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_004",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_004.md",
+      "snapshot_time": "2021-02-01T19:17:40Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        127058
+      ],
+      "text_hash": "383755421B823C7E65C3F903E1F9C5C36988B1F8F5CC6E280CBD9C5421609831",
+      "title": "Observation card derived_wallet_004",
+      "wallet_address": "0x37341cbb14c5f128a70b149726ad8b2ce6f4c793"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_005::chunk_001",
+        "derived_wallet_005::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_005",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_005.md",
+      "snapshot_time": "2021-05-13T00:08:57Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        188579
+      ],
+      "text_hash": "F276E9A3624A7D4CCD6DB73E94F24891D210A85794A4B3E12327A4C55FA4F192",
+      "title": "Observation card derived_wallet_005",
+      "wallet_address": "0x3aa39dff4964043a61d94029fcedaac2f02f3187"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_006::chunk_001",
+        "derived_wallet_006::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_006",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_006.md",
+      "snapshot_time": "2022-05-08T11:44:21Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        326649
+      ],
+      "text_hash": "A3281984E55FCC0EB90DD12FA660736C80C8B9B64EFDB2724714F4F38A3EE135",
+      "title": "Observation card derived_wallet_006",
+      "wallet_address": "0x4dc2d70f426df35eeaaea90a8e98b87b10f500d6"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_007::chunk_001",
+        "derived_wallet_007::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_007",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_007.md",
+      "snapshot_time": "2020-07-12T04:09:58Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        54125
+      ],
+      "text_hash": "2D1D933FE3592E238AC2FDCC85B5D7D980E706050B7E19D3034E8ED33020C772",
+      "title": "Observation card derived_wallet_007",
+      "wallet_address": "0x6ce3dfe03066ec06658f6f9585c34c3f71c71fc4"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_008::chunk_001",
+        "derived_wallet_008::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_008",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_008.md",
+      "snapshot_time": "2021-04-26T15:28:19Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        173870
+      ],
+      "text_hash": "6E2C1655CEF3C3555E17808ADB7120450F90D43F13DDBA91450611F602161004",
+      "title": "Observation card derived_wallet_008",
+      "wallet_address": "0x7ee933a6539a95e866afce265de061e93b9f77fa"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_009::chunk_001",
+        "derived_wallet_009::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_009",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_009.md",
+      "snapshot_time": "2020-10-12T05:34:59Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        76586
+      ],
+      "text_hash": "E24890F2708505F7008324CA962DCCFDE3C988BB106F30E33B302DD4E0E4F53F",
+      "title": "Observation card derived_wallet_009",
+      "wallet_address": "0x7f439b433022f4674048ec7b0e7d7afefdb1012a"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_010::chunk_001",
+        "derived_wallet_010::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_010",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_010.md",
+      "snapshot_time": "2021-02-13T11:00:34Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        135021
+      ],
+      "text_hash": "60D9433A4B023647195A99CEEEFBEC233DCB7567BDF42A4CDF017351A7B596AA",
+      "title": "Observation card derived_wallet_010",
+      "wallet_address": "0x8fc537a30b23f39848f4fb57e576e528e6590fc2"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_011::chunk_001",
+        "derived_wallet_011::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_011",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_011.md",
+      "snapshot_time": "2021-07-01T10:08:03Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        225476
+      ],
+      "text_hash": "C98A5E952922494CE5F2A4DCDFCE66B52D5BD70540D1571D66F9946479473466",
+      "title": "Observation card derived_wallet_011",
+      "wallet_address": "0x9e8caff2218e77befdc62ea6d18abd1493f96b9a"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_012::chunk_001",
+        "derived_wallet_012::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_012",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_012.md",
+      "snapshot_time": "2021-12-11T13:54:19Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        293911
+      ],
+      "text_hash": "1BADFF7A3CEFAD9AF7810062103BF4998225C737B8BD44849E819D3DD12C6235",
+      "title": "Observation card derived_wallet_012",
+      "wallet_address": "0xb8832d516d0f3094b4bdc5400e36a2a6984233ea"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_013::chunk_001",
+        "derived_wallet_013::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_013",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_013.md",
+      "snapshot_time": "2020-06-28T21:13:20Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        46556
+      ],
+      "text_hash": "573F52DC909A914FCD5751B79F1CF478DDAC166B6421A2415557611BE23B77FA",
+      "title": "Observation card derived_wallet_013",
+      "wallet_address": "0xbba7f4fa59362e68cd4081f5a098e1d9c01fc552"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_014::chunk_001",
+        "derived_wallet_014::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_014",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_014.md",
+      "snapshot_time": "2021-06-22T01:43:46Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        218628
+      ],
+      "text_hash": "31B0B158A98C612F669D7A1D1922AC8F26B7A3867679AC87D02F0B5DADFE4158",
+      "title": "Observation card derived_wallet_014",
+      "wallet_address": "0xc3adc9cb05761ede82dd6d4ef9c7b346956e18bc"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_015::chunk_001",
+        "derived_wallet_015::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_015",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_015.md",
+      "snapshot_time": "2023-01-05T18:09:35Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        403613
+      ],
+      "text_hash": "04643D6018B6DBE4D46CE460C295AA38239E072EFAB3D34DA970A7F08F221718",
+      "title": "Observation card derived_wallet_015",
+      "wallet_address": "0xcd39d1932e58aa2c75b9142697ef9dc1ba290866"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_016::chunk_001",
+        "derived_wallet_016::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_016",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_016.md",
+      "snapshot_time": "2021-12-08T23:25:07Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        293387
+      ],
+      "text_hash": "6D090D7F20F1278F0B651883B753E72D21466CA13EA540B947F49982C13260CB",
+      "title": "Observation card derived_wallet_016",
+      "wallet_address": "0xdb4361c35d6008f3a5b17d39f5731e34af5772c1"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_017::chunk_001",
+        "derived_wallet_017::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_017",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_017.md",
+      "snapshot_time": "2022-01-04T05:39:07Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        298208
+      ],
+      "text_hash": "A636B06EA3F4E5F1E0CEB2D81EA0E95EFB4F48E769579354F9855898795C15FB",
+      "title": "Observation card derived_wallet_017",
+      "wallet_address": "0xdb8fcd377f5447a66aaea56f8f4e4008ece31dec"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_018::chunk_001",
+        "derived_wallet_018::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_018",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_018.md",
+      "snapshot_time": "2020-02-27T02:29:35Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        24385
+      ],
+      "text_hash": "845D7C411C6588C6FB30C057BD07708D34D6ED90F7D34F3C83FDDADD27D88D27",
+      "title": "Observation card derived_wallet_018",
+      "wallet_address": "0xe54dae18b3af0a840c72cc8c0a0c2200acbf6ade"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_019::chunk_001",
+        "derived_wallet_019::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_019",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_019.md",
+      "snapshot_time": "2021-05-04T09:50:45Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        182928
+      ],
+      "text_hash": "89982EA0F1BC84F3EADEDDAA5918B0866FFE4D4E34E3FE8DF799F677BED3D2C2",
+      "title": "Observation card derived_wallet_019",
+      "wallet_address": "0xf286e8f2e4de88c0aec8062ad3103e0e522ec8d2"
+    },
+    {
+      "chunk_ids": [
+        "derived_wallet_020::chunk_001",
+        "derived_wallet_020::chunk_002"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "derived_wallet_020",
+      "document_type": "observation_card",
+      "path": "documents/derived_wallet_020.md",
+      "snapshot_time": "2020-06-16T08:06:26Z",
+      "source_kind": "derived_data",
+      "source_row_ids": [
+        35569
+      ],
+      "text_hash": "44E84C07A7D80BFAF02DC1F6AB929F9D04EAB0F01CE5013F24382A0F4497570E",
+      "title": "Observation card derived_wallet_020",
+      "wallet_address": "0xf93c19e564adbfeb569e75240e22b0f9cf560edb"
+    },
+    {
+      "chunk_ids": [
+        "synthetic_note_001::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "synthetic_note_001",
+      "document_type": "analyst_note",
+      "path": "documents/synthetic_note_001.md",
+      "snapshot_time": "2022-08-17T00:19:15Z",
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [
+        359374
+      ],
+      "text_hash": "A94B1069B3AE8DEFBB51A290B7D01FAF6D4C9F81B50B715E5641FC58A73A4B8C",
+      "title": "Synthetic demo analyst note synthetic_note_001",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739"
+    },
+    {
+      "chunk_ids": [
+        "synthetic_note_002::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "synthetic_note_002",
+      "document_type": "analyst_note",
+      "path": "documents/synthetic_note_002.md",
+      "snapshot_time": "2021-06-07T19:45:11Z",
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [
+        208173
+      ],
+      "text_hash": "78FDE52EC904AD25B88D6ACCC26DF6D68090E39C0168D631497A7E92DEBB0E64",
+      "title": "Synthetic demo analyst note synthetic_note_002",
+      "wallet_address": "0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c"
+    },
+    {
+      "chunk_ids": [
+        "synthetic_note_003::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "synthetic_note_003",
+      "document_type": "analyst_note",
+      "path": "documents/synthetic_note_003.md",
+      "snapshot_time": "2020-09-25T06:36:51Z",
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [
+        73730
+      ],
+      "text_hash": "7071FC4F2E7FCB29C38B14BC36F554BE7BC5F3646AACB5BCDBC4764A16992C7B",
+      "title": "Synthetic demo analyst note synthetic_note_003",
+      "wallet_address": "0x3548ca2f774b5b36c7758d191ba62f1ddfc50649"
+    },
+    {
+      "chunk_ids": [
+        "synthetic_note_004::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "synthetic_note_004",
+      "document_type": "analyst_note",
+      "path": "documents/synthetic_note_004.md",
+      "snapshot_time": "2021-02-01T19:17:40Z",
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [
+        127058
+      ],
+      "text_hash": "24299DCA90D60B737E7B02B6FF5EE1687825C7DD64DE70A105572E7082F80E92",
+      "title": "Synthetic demo analyst note synthetic_note_004",
+      "wallet_address": "0x37341cbb14c5f128a70b149726ad8b2ce6f4c793"
+    },
+    {
+      "chunk_ids": [
+        "synthetic_note_005::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "synthetic_note_005",
+      "document_type": "analyst_note",
+      "path": "documents/synthetic_note_005.md",
+      "snapshot_time": "2021-05-13T00:08:57Z",
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [
+        188579
+      ],
+      "text_hash": "F344008C70A20010387BBFAFE0A40BB6F7EF820949ADD8B088BD3387CE5F1624",
+      "title": "Synthetic demo analyst note synthetic_note_005",
+      "wallet_address": "0x3aa39dff4964043a61d94029fcedaac2f02f3187"
+    },
+    {
+      "chunk_ids": [
+        "method_scoring_limits::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "method_scoring_limits",
+      "document_type": "methodology",
+      "path": "documents/method_scoring_limits.md",
+      "snapshot_time": null,
+      "source_kind": "derived_data",
+      "source_row_ids": [],
+      "text_hash": "AF1A58E529B1AC61BB7F9D9628D3C1310577D8849D7E260D12EF7D899B1F4F3D",
+      "title": "Scoring interpretation limits",
+      "wallet_address": null
+    },
+    {
+      "chunk_ids": [
+        "method_feature_dictionary::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "method_feature_dictionary",
+      "document_type": "methodology",
+      "path": "documents/method_feature_dictionary.md",
+      "snapshot_time": null,
+      "source_kind": "derived_data",
+      "source_row_ids": [],
+      "text_hash": "04A91ADB6E8CCC83230A6518C5D5E3A59901FBCBFFB7C741FBE485C5FBFA7893",
+      "title": "Feature dictionary notes",
+      "wallet_address": null
+    },
+    {
+      "chunk_ids": [
+        "method_retrieval_rules::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "method_retrieval_rules",
+      "document_type": "methodology",
+      "path": "documents/method_retrieval_rules.md",
+      "snapshot_time": null,
+      "source_kind": "derived_data",
+      "source_row_ids": [],
+      "text_hash": "E13AC393B04AACD228D365A20BE6E7EC73089657FFD2ADB7734F42020D4CE29E",
+      "title": "Retrieval rules for wallet documents",
+      "wallet_address": null
+    },
+    {
+      "chunk_ids": [
+        "irrelevant_demo_text::chunk_001"
+      ],
+      "corpus_version": "demo_corpus_v1",
+      "created_at": "2026-09-29T00:00:00Z",
+      "document_id": "irrelevant_demo_text",
+      "document_type": "irrelevant",
+      "path": "documents/irrelevant_demo_text.md",
+      "snapshot_time": null,
+      "source_kind": "synthetic_demo",
+      "source_row_ids": [],
+      "text_hash": "8BE2D9BE891E3062E7E03C6671E888BDAFB33E0DDA9A1713CCC1CC62599BAC17",
+      "title": "Irrelevant demo text",
+      "wallet_address": null
+    }
+  ],
+  "seed": 42,
+  "source_kinds": [
+    "derived_data",
+    "synthetic_demo"
+  ]
+}

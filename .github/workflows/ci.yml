@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit, Contract, and Corpus Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      AGENT_LLM_PROVIDER: disabled
+      AGENT_LLM_TIMEOUT_SECONDS: "120"
+      AGENT_LLM_NUM_PREDICT: "512"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+
+      - name: Compile Python modules
+        run: python -m compileall -q app src scripts monitoring tests
+
+      - name: Lint with Ruff
+        run: python -m ruff check app src scripts monitoring tests
+
+      - name: Type check with mypy
+        run: python -m mypy app src scripts monitoring tests
+
+      - name: Check runtime artifacts for full tests
+        run: python scripts/ci_runtime_artifacts_check.py
+
+      - name: Check corpus and local retrieval index
+        run: python scripts/ci_corpus_check.py
+
+      - name: Run tests with mock or disabled LLM
+        run: python -m pytest -q
+
+  docker-build-dry-run:
+    name: Docker Build Dry Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image without pushing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: false
+          tags: wallet-risk-api:${{ github.sha }}

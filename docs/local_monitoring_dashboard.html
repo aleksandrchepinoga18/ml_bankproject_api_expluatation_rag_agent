@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Wallet Risk Local Monitoring</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #202124; }
+    h1 { font-size: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .card { border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; }
+    .label { color: #57606a; font-size: 12px; text-transform: uppercase; }
+    .value { font-size: 22px; margin-top: 6px; }
+    pre { white-space: pre-wrap; background: #f6f8fa; padding: 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Wallet Risk Local Monitoring</h1>
+  <p>Generated at 2026-10-05T17:17:53Z. Local dashboard only; no external alert messages are sent.</p>
+  <div class="grid">
+    <div class="card"><div class="label">Requests</div><div class="value">161</div></div>
+    <div class="card"><div class="label">Availability</div><div class="value">1.0</div></div>
+    <div class="card"><div class="label">5xx Error Rate</div><div class="value">0.0</div></div>
+    <div class="card"><div class="label">Latency p95 ms</div><div class="value">1000.366</div></div>
+    <div class="card"><div class="label">Source Correctness</div><div class="value">1.0</div></div>
+    <div class="card"><div class="label">Insufficient Data Rate</div><div class="value">0.30303</div></div>
+    <div class="card"><div class="label">Answer Replacement Rate</div><div class="value">0.090909</div></div>
+  </div>
+  <h2>Definitions</h2>
+  <pre>denominator: Agent responses where intent is documents/combined/general or response has sources/findings; numerator: eligible responses with supported findings, document_id/chunk_id on every source, and no foreign_wallet_source/missing_chunk/unsupported_claim validation errors</pre>
+  <pre>Agent responses whose limitations include an llm_answer_replaced_* marker; these are cases where the original LLM answer was rejected and a deterministic fallback answer was returned.</pre>
+  <h2>Raw Snapshot</h2>
+  <pre>{
+  "generated_at": "2026-10-05T17:17:53Z",
+  "lookback_days": 7,
+  "versions": {
+    "status": "ok",
+    "agent_version": "wallet_risk_agent_v1",
+    "prompt_version": "wallet_risk_agent_prompt_v1",
+    "model_version": "lightgbm_89ef90618da4df9d",
+    "schema_version": "scoring_explanation_v1",
+    "corpus_version": "demo_corpus_v1",
+    "index_version": "idx_422d98707f81",
+    "llm_provider": "ollama",
+    "ollama_model": "qwen2.5:7b-instruct"
+  },
+  "requests": {
+    "total": 161,
+    "availability_rate": 1.0,
+    "error_rate_5xx": 0.0,
+    "status_counts": {
+      "200": 161
+    }
+  },
+  "latency_ms": {
+    "count": 161,
+    "p50": 1.472,
+    "p95": 1000.366,
+    "max": 71877.546
+  },
+  "agent": {
+    "total": 33,
+    "insufficient_data_rate": 0.30303,
+    "no_documents_rate": 0.0,
+    "invalid_answer_rate": 0.0,
+    "answer_replacement_count": 3,
+    "answer_replacement_rate": 0.090909,
+    "answer_replacement_definition": "Agent responses whose limitations include an llm_answer_replaced_* marker; these are cases where the original LLM answer was rejected and a deterministic fallback answer was returned."
+  },
+  "source_correctness": {
+    "definition": "denominator: Agent responses where intent is documents/combined/general or response has sources/findings; numerator: eligible responses with supported findings, document_id/chunk_id on every source, and no foreign_wallet_source/missing_chunk/unsupported_claim validation errors",
+    "numerator": 15,
+    "denominator": 15,
+    "rate": 1.0
+  }
+}</pre>
+</body>
+</html>

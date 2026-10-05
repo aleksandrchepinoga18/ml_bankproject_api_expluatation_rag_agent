@@ -1,0 +1,33 @@
+{
+  "method": {
+    "baseline_rule": "max_row_probability",
+    "alternative_rule": "mean_row_probability",
+    "dataset": "data/dataset.parquet",
+    "notes": [
+      "Offline comparison uses the available local dataset and saved LightGBM artifact.",
+      "The baseline rule is not changed by this analysis."
+    ]
+  },
+  "wallets": 74476,
+  "rows": 442961,
+  "records_count": {
+    "min": 1,
+    "median": 1.0,
+    "p95": 21.0,
+    "max": 2759
+  },
+  "correlations": {
+    "spearman_records_count_vs_max_probability": 0.2901352795602595,
+    "spearman_records_count_vs_max_rank": -0.29013527954119495
+  },
+  "top50_comparison": {
+    "baseline_top50_rule": "max_row_probability",
+    "alternative_top50_rule": "mean_row_probability",
+    "overlap_count": 4,
+    "overlap_share": 0.08,
+    "baseline_only_count": 46,
+    "alternative_only_count": 46,
+    "baseline_top50_records_count_median": 214.5,
+    "alternative_top50_records_count_median": 2.0
+  }
+}

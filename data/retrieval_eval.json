@@ -1,0 +1,112 @@
+{
+  "queries": [
+    {
+      "query_id": "wallet_card_derived_wallet_001",
+      "query": "What fields are available for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739?",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_001::chunk_001"
+      ]
+    },
+    {
+      "query_id": "wallet_card_derived_wallet_002",
+      "query": "What fields are available for wallet 0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c?",
+      "wallet_address": "0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_002::chunk_001"
+      ]
+    },
+    {
+      "query_id": "wallet_card_derived_wallet_003",
+      "query": "What fields are available for wallet 0x3548ca2f774b5b36c7758d191ba62f1ddfc50649?",
+      "wallet_address": "0x3548ca2f774b5b36c7758d191ba62f1ddfc50649",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_003::chunk_001"
+      ]
+    },
+    {
+      "query_id": "wallet_card_derived_wallet_004",
+      "query": "What fields are available for wallet 0x37341cbb14c5f128a70b149726ad8b2ce6f4c793?",
+      "wallet_address": "0x37341cbb14c5f128a70b149726ad8b2ce6f4c793",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_004::chunk_001"
+      ]
+    },
+    {
+      "query_id": "wallet_card_derived_wallet_005",
+      "query": "What fields are available for wallet 0x3aa39dff4964043a61d94029fcedaac2f02f3187?",
+      "wallet_address": "0x3aa39dff4964043a61d94029fcedaac2f02f3187",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_005::chunk_001"
+      ]
+    },
+    {
+      "query_id": "wallet_card_derived_wallet_006",
+      "query": "What fields are available for wallet 0x4dc2d70f426df35eeaaea90a8e98b87b10f500d6?",
+      "wallet_address": "0x4dc2d70f426df35eeaaea90a8e98b87b10f500d6",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "derived_wallet_006::chunk_001"
+      ]
+    },
+    {
+      "query_id": "synthetic_note_synthetic_note_001",
+      "query": "What demo analyst questions are listed for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739?",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "synthetic_note_001::chunk_001"
+      ]
+    },
+    {
+      "query_id": "synthetic_note_synthetic_note_002",
+      "query": "What demo analyst questions are listed for wallet 0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c?",
+      "wallet_address": "0x1a6b15ff611b75efaa5f91cf0a9b9b396d2bf73c",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "synthetic_note_002::chunk_001"
+      ]
+    },
+    {
+      "query_id": "synthetic_note_synthetic_note_003",
+      "query": "What demo analyst questions are listed for wallet 0x3548ca2f774b5b36c7758d191ba62f1ddfc50649?",
+      "wallet_address": "0x3548ca2f774b5b36c7758d191ba62f1ddfc50649",
+      "scope": "wallet",
+      "relevant_chunk_ids": [
+        "synthetic_note_003::chunk_001"
+      ]
+    },
+    {
+      "query_id": "general_method_scoring_limits",
+      "query": "Scoring interpretation limits",
+      "wallet_address": null,
+      "scope": "general",
+      "relevant_chunk_ids": [
+        "method_scoring_limits::chunk_001"
+      ]
+    },
+    {
+      "query_id": "general_method_feature_dictionary",
+      "query": "Feature dictionary notes",
+      "wallet_address": null,
+      "scope": "general",
+      "relevant_chunk_ids": [
+        "method_feature_dictionary::chunk_001"
+      ]
+    },
+    {
+      "query_id": "general_method_retrieval_rules",
+      "query": "Retrieval rules for wallet documents",
+      "wallet_address": null,
+      "scope": "general",
+      "relevant_chunk_ids": [
+        "method_retrieval_rules::chunk_001"
+      ]
+    }
+  ]
+}

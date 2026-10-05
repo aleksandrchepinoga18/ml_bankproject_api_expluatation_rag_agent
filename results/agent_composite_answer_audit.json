@@ -1,0 +1,847 @@
+{
+  "ollama_model": "qwen2.5:7b-instruct",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "scenarios": [
+    {
+      "name": "wallet_score_factors_documents_boundary",
+      "request": {
+        "question": "For wallet 0x01da6f3b20d0540f24d390e28195ad7311516739, explain the risk score, top model factors, document sources, and whether the chunks are synthetic demo or derived data.",
+        "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+        "features": {
+          "first_tx_timestamp": 0,
+          "last_tx_timestamp": 0,
+          "wallet_age": 86400,
+          "incoming_tx_count": 0,
+          "outgoing_tx_count": 0,
+          "net_incoming_tx_count": 0,
+          "total_gas_paid_eth": 0,
+          "avg_gas_paid_per_tx_eth": 0,
+          "risky_tx_count": 35,
+          "risky_unique_contract_count": 0,
+          "risky_last_tx_timestamp": 0,
+          "risky_first_last_tx_timestamp_diff": 0,
+          "risky_sum_outgoing_amount_eth": 0,
+          "outgoing_tx_sum_eth": 0,
+          "incoming_tx_sum_eth": 0,
+          "outgoing_tx_avg_eth": 0,
+          "incoming_tx_avg_eth": 0,
+          "max_eth_ever": 0,
+          "min_eth_ever": 0,
+          "total_balance_eth": 0,
+          "risk_factor": 0,
+          "total_collateral_eth": 0,
+          "total_collateral_avg_eth": 0,
+          "total_available_borrows_eth": 0,
+          "total_available_borrows_avg_eth": 0,
+          "avg_weighted_risk_factor": 0,
+          "risk_factor_above_threshold_daily_count": 0,
+          "avg_risk_factor": 0,
+          "max_risk_factor": 0,
+          "borrow_amount_sum_eth": 0,
+          "borrow_amount_avg_eth": 0,
+          "borrow_count": 0,
+          "repay_amount_sum_eth": 0,
+          "repay_amount_avg_eth": 0,
+          "repay_count": 0,
+          "borrow_repay_diff_eth": 0,
+          "deposit_count": 0,
+          "deposit_amount_sum_eth": 0,
+          "time_since_first_deposit": 0,
+          "withdraw_amount_sum_eth": 0,
+          "withdraw_deposit_diff_if_positive_eth": 0,
+          "time_since_last_liquidated": 0,
+          "liquidation_amount_sum_eth": 0,
+          "market_adx": 0,
+          "market_adxr": 0,
+          "market_aroonosc": 0,
+          "market_aroonup": 0,
+          "market_atr": 0,
+          "market_cci": 0,
+          "market_cmo": 0,
+          "market_correl": 0,
+          "market_dx": 0,
+          "market_fastk": 0,
+          "market_fastd": 0,
+          "market_ht_trendmode": 0,
+          "market_linearreg_slope": 0,
+          "market_macdsignal_macdext": 0,
+          "market_max_drawdown_365d": 0,
+          "market_natr": 0,
+          "market_plus_di": 0,
+          "market_plus_dm": 0,
+          "market_ppo": 0,
+          "market_rocr": 0,
+          "unique_borrow_protocol_count": 0,
+          "unique_lending_protocol_count": 0
+        },
+        "top_k": 4,
+        "request_id": "agent_8a_wallet_composite"
+      },
+      "response": {
+        "request_id": "agent_8a_wallet_composite",
+        "agent_version": "wallet_risk_agent_v1",
+        "prompt_version": "wallet_risk_agent_prompt_v1",
+        "intent": "combined",
+        "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+        "data_status": "ok",
+        "risk": {
+          "status": "scored",
+          "nature": "model_score_not_blockchain_fact",
+          "model_version": "lightgbm_4fc20542d0f4c2cb",
+          "schema_version": "scoring_explanation_v1",
+          "score": 0.3722852947184254,
+          "threshold": 0.3578026090255801,
+          "prediction": 1,
+          "aggregation": {
+            "rule": "max_row_probability",
+            "score": 0.3722852947184254,
+            "prediction": 1,
+            "records_count": 1,
+            "representative_row_id": "input_row_0"
+          },
+          "top_features": [
+            {
+              "feature": "time_since_last_liquidated",
+              "value": 0,
+              "impact": 0.4613137149520164
+            },
+            {
+              "feature": "time_since_first_deposit",
+              "value": 0,
+              "impact": 0.2779563745677975
+            },
+            {
+              "feature": "max_eth_ever",
+              "value": 0,
+              "impact": 0.20769358848138988
+            }
+          ],
+          "rule_triggers": [
+            {
+              "rule": "risky_tx_count_gt_20",
+              "feature": "risky_tx_count",
+              "value": 35.0,
+              "message": "обнаружено 35 рисковых транзакций"
+            },
+            {
+              "rule": "wallet_age_lt_7_days",
+              "feature": "wallet_age",
+              "value": 86400.0,
+              "message": "кошелёк создан менее недели назад (1 дней)"
+            }
+          ],
+          "reason": null
+        },
+        "document_findings": [
+          {
+            "claim": "# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal c...",
+            "document_id": "synthetic_note_001",
+            "chunk_id": "synthetic_note_001::chunk_001",
+            "source_kind": "synthetic_demo",
+            "supported": true,
+            "synthetic_demo": true
+          },
+          {
+            "claim": "# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...",
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_001",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          },
+          {
+            "claim": "## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.",
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_002",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          }
+        ],
+        "sources": [
+          {
+            "document_id": "synthetic_note_001",
+            "chunk_id": "synthetic_note_001::chunk_001",
+            "source_kind": "synthetic_demo",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 1,
+            "score": 19.932309029110286
+          },
+          {
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_001",
+            "source_kind": "derived_data",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 2,
+            "score": 5.7933004485940796
+          },
+          {
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_002",
+            "source_kind": "derived_data",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 3,
+            "score": 2.0829094999573647
+          }
+        ],
+        "answer": "Based on the provided JSON tool output, the risk analysis indicates that the wallet address `0x01da6f3b20d0540f24d390e28195ad7311516739` is considered to have a moderate risk score of 0.3723, which is slightly above the threshold of 0.3578.\n\n### Key Findings:\n1. **Risky Transactions:**\n   - The wallet has been flagged with 35 risk transactions, which is above the threshold of 20 risk transactions",
+        "limitations": [
+          "synthetic_demo_documents_are_not_independent_evidence",
+          "tool_selection_coverage_guard"
+        ],
+        "tool_statuses": [
+          {
+            "name": "scoring",
+            "status": "ok",
+            "elapsed_ms": 16.63550001103431,
+            "error": null
+          },
+          {
+            "name": "shap",
+            "status": "ok",
+            "elapsed_ms": 31.91809999407269,
+            "error": null
+          },
+          {
+            "name": "retrieval",
+            "status": "ok",
+            "elapsed_ms": 1.528099994175136,
+            "error": null
+          }
+        ],
+        "llm": {
+          "provider": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "status": "ok",
+          "error": null
+        },
+        "trace": [
+          {
+            "step": 1,
+            "node": "parse_request",
+            "action": "node",
+            "status": "ok",
+            "detail": "question=For wallet 0x01da6f3b20d0540f24d390e28195ad7311516739, explain the risk score, top model factors, document sources, and ; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=combined"
+          },
+          {
+            "step": 2,
+            "node": "llm_tool_decision",
+            "action": "llm_tool_decision",
+            "status": "ok",
+            "detail": "source=llm_tool_calling; selected=scoring,shap,retrieval; llm_status=ok; invalid=none; coverage_added=shap,retrieval"
+          },
+          {
+            "step": 3,
+            "node": "scoring",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={'reason': 'For wallet 0x01da6f3b20d0540f24d390e28195ad7311516739, explain the risk score, top model factors, document sources, and whether the chunks are synthetic demo or derived data.'}"
+          },
+          {
+            "step": 4,
+            "node": "scoring",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=16.636"
+          },
+          {
+            "step": 5,
+            "node": "shap",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={}"
+          },
+          {
+            "step": 6,
+            "node": "shap",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=31.918"
+          },
+          {
+            "step": 7,
+            "node": "retrieval",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={}"
+          },
+          {
+            "step": 8,
+            "node": "retrieval",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=1.528"
+          },
+          {
+            "step": 9,
+            "node": "execute_tools",
+            "action": "node",
+            "status": "ok",
+            "detail": "executed=scoring,shap,retrieval"
+          },
+          {
+            "step": 10,
+            "node": "build_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          },
+          {
+            "step": 11,
+            "node": "validate_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          }
+        ],
+        "validation_errors": [],
+        "execution_mode": "langgraph",
+        "tool_selection_source": "llm_tool_calling",
+        "selected_tools": [
+          "scoring",
+          "shap",
+          "retrieval"
+        ]
+      },
+      "coverage_checks": [
+        {
+          "part": "risk_score",
+          "status": "ok"
+        },
+        {
+          "part": "model_factors",
+          "status": "ok"
+        },
+        {
+          "part": "document_sources",
+          "status": "ok"
+        },
+        {
+          "part": "source_kind_boundary",
+          "status": "ok"
+        },
+        {
+          "part": "document_claims_supported_by_chunk_text",
+          "status": "ok"
+        }
+      ],
+      "grounding_checks": [
+        {
+          "chunk_id": "synthetic_note_001::chunk_001",
+          "document_id": "synthetic_note_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "synthetic_demo"
+        },
+        {
+          "chunk_id": "derived_wallet_001::chunk_001",
+          "document_id": "derived_wallet_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        },
+        {
+          "chunk_id": "derived_wallet_001::chunk_002",
+          "document_id": "derived_wallet_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        }
+      ],
+      "status": "ok",
+      "trace": "parse_request[node]:ok -> llm_tool_decision[llm_tool_decision]:ok -> scoring[tool_call]:ok -> scoring[tool_result]:ok -> shap[tool_call]:ok -> shap[tool_result]:ok -> retrieval[tool_call]:ok -> retrieval[tool_result]:ok -> execute_tools[node]:ok -> build_answer[node]:ok -> validate_answer[node]:ok"
+    },
+    {
+      "name": "general_methodology_multi_fragment",
+      "request": {
+        "question": "Summarize retrieval rules, scoring interpretation limits, and feature dictionary notes. Cite document chunks.",
+        "top_k": 3,
+        "request_id": "agent_8a_general_multi_fragment"
+      },
+      "response": {
+        "request_id": "agent_8a_general_multi_fragment",
+        "agent_version": "wallet_risk_agent_v1",
+        "prompt_version": "wallet_risk_agent_prompt_v1",
+        "intent": "general",
+        "wallet_address": null,
+        "data_status": "ok",
+        "risk": {
+          "status": "not_requested",
+          "nature": "model_score_not_blockchain_fact",
+          "model_version": null,
+          "schema_version": null,
+          "score": null,
+          "threshold": null,
+          "prediction": null,
+          "aggregation": null,
+          "top_features": [],
+          "rule_triggers": [],
+          "reason": null
+        },
+        "document_findings": [
+          {
+            "claim": "# Feature dictionary notes source_kind: derived_data Fields ending in _count are dataset counts. Fields ending in _timestamp are Unix-like timestamps in the source table. Aggregate windows and availability at predicti...",
+            "document_id": "method_feature_dictionary",
+            "chunk_id": "method_feature_dictionary::chunk_001",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          },
+          {
+            "claim": "# Scoring interpretation limits source_kind: derived_data A model score is an output of a saved LightGBM artifact for a row-level observation. It must not be described as a calibrated real-world probability unless cal...",
+            "document_id": "method_scoring_limits",
+            "chunk_id": "method_scoring_limits::chunk_001",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          },
+          {
+            "claim": "# Retrieval rules for wallet documents source_kind: derived_data For an address-specific question, exact wallet_address linkage must be checked before semantic ranking. Semantic similarity alone does not prove that a...",
+            "document_id": "method_retrieval_rules",
+            "chunk_id": "method_retrieval_rules::chunk_001",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          }
+        ],
+        "sources": [
+          {
+            "document_id": "method_feature_dictionary",
+            "chunk_id": "method_feature_dictionary::chunk_001",
+            "source_kind": "derived_data",
+            "wallet_address": null,
+            "rank": 1,
+            "score": 12.3997995026863
+          },
+          {
+            "document_id": "method_scoring_limits",
+            "chunk_id": "method_scoring_limits::chunk_001",
+            "source_kind": "derived_data",
+            "wallet_address": null,
+            "rank": 2,
+            "score": 11.099126923883109
+          },
+          {
+            "document_id": "method_retrieval_rules",
+            "chunk_id": "method_retrieval_rules::chunk_001",
+            "source_kind": "derived_data",
+            "wallet_address": null,
+            "rank": 3,
+            "score": 9.848291572804508
+          }
+        ],
+        "answer": "Based on the provided JSON tool output, here is the analysis of the wallet risk:\n\nThe document findings indicate that the features used in the model are derived data, with counts and timestamps clearly marked. These are necessary for understanding the data characteristics but do not directly indicate a risk or a specific outcome.\n\nThe scoring limits explain that the model score is generated by a LightGBM artifact and should not be interpreted as a real-world probability unless calibrated. This means the model score alone does not provide a direct risk assessment but rather a relative indication.\n\nThe retrieval rules emphasize the importance of checking exact wallet_address linkage before semantic ranking, indicating that a single high",
+        "limitations": [],
+        "tool_statuses": [
+          {
+            "name": "retrieval",
+            "status": "ok",
+            "elapsed_ms": 0.9673000022303313,
+            "error": null
+          }
+        ],
+        "llm": {
+          "provider": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "status": "ok",
+          "error": null
+        },
+        "trace": [
+          {
+            "step": 1,
+            "node": "parse_request",
+            "action": "node",
+            "status": "ok",
+            "detail": "question=Summarize retrieval rules, scoring interpretation limits, and feature dictionary notes. Cite document chunks.; wallet_address=None; fallback_intent=general"
+          },
+          {
+            "step": 2,
+            "node": "llm_tool_decision",
+            "action": "llm_tool_decision",
+            "status": "ok",
+            "detail": "source=llm_tool_calling; selected=retrieval; llm_status=ok; invalid=none; coverage_added=none"
+          },
+          {
+            "step": 3,
+            "node": "retrieval",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={'reason': 'Summarize retrieval rules, scoring interpretation limits, and feature dictionary notes. Cite document chunks.'}"
+          },
+          {
+            "step": 4,
+            "node": "retrieval",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=0.967"
+          },
+          {
+            "step": 5,
+            "node": "execute_tools",
+            "action": "node",
+            "status": "ok",
+            "detail": "executed=retrieval"
+          },
+          {
+            "step": 6,
+            "node": "build_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          },
+          {
+            "step": 7,
+            "node": "validate_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          }
+        ],
+        "validation_errors": [],
+        "execution_mode": "langgraph",
+        "tool_selection_source": "llm_tool_calling",
+        "selected_tools": [
+          "retrieval"
+        ]
+      },
+      "coverage_checks": [
+        {
+          "part": "retrieval_rules_chunk",
+          "status": "ok"
+        },
+        {
+          "part": "scoring_limits_chunk",
+          "status": "ok"
+        },
+        {
+          "part": "feature_dictionary_chunk",
+          "status": "ok"
+        },
+        {
+          "part": "document_claims_supported_by_chunk_text",
+          "status": "ok"
+        }
+      ],
+      "grounding_checks": [
+        {
+          "chunk_id": "method_feature_dictionary::chunk_001",
+          "document_id": "method_feature_dictionary",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        },
+        {
+          "chunk_id": "method_scoring_limits::chunk_001",
+          "document_id": "method_scoring_limits",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        },
+        {
+          "chunk_id": "method_retrieval_rules::chunk_001",
+          "document_id": "method_retrieval_rules",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        }
+      ],
+      "status": "ok",
+      "trace": "parse_request[node]:ok -> llm_tool_decision[llm_tool_decision]:ok -> retrieval[tool_call]:ok -> retrieval[tool_result]:ok -> execute_tools[node]:ok -> build_answer[node]:ok -> validate_answer[node]:ok"
+    },
+    {
+      "name": "missing_features_plus_documents",
+      "request": {
+        "question": "For wallet 0x01da6f3b20d0540f24d390e28195ad7311516739, give the risk score, top model factors, and document sources.",
+        "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+        "top_k": 3,
+        "request_id": "agent_8a_missing_features"
+      },
+      "response": {
+        "request_id": "agent_8a_missing_features",
+        "agent_version": "wallet_risk_agent_v1",
+        "prompt_version": "wallet_risk_agent_prompt_v1",
+        "intent": "combined",
+        "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+        "data_status": "insufficient_data",
+        "risk": {
+          "status": "insufficient_data",
+          "nature": "model_score_not_blockchain_fact",
+          "model_version": "lightgbm_4fc20542d0f4c2cb",
+          "schema_version": "scoring_explanation_v1",
+          "score": null,
+          "threshold": null,
+          "prediction": null,
+          "aggregation": null,
+          "top_features": [],
+          "rule_triggers": [],
+          "reason": "features_required"
+        },
+        "document_findings": [
+          {
+            "claim": "# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal c...",
+            "document_id": "synthetic_note_001",
+            "chunk_id": "synthetic_note_001::chunk_001",
+            "source_kind": "synthetic_demo",
+            "supported": true,
+            "synthetic_demo": true
+          },
+          {
+            "claim": "# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...",
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_001",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          },
+          {
+            "claim": "## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.",
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_002",
+            "source_kind": "derived_data",
+            "supported": true,
+            "synthetic_demo": false
+          }
+        ],
+        "sources": [
+          {
+            "document_id": "synthetic_note_001",
+            "chunk_id": "synthetic_note_001::chunk_001",
+            "source_kind": "synthetic_demo",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 1,
+            "score": 9.616433597174177
+          },
+          {
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_001",
+            "source_kind": "derived_data",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 2,
+            "score": 3.5879934054787417
+          },
+          {
+            "document_id": "derived_wallet_001",
+            "chunk_id": "derived_wallet_001::chunk_002",
+            "source_kind": "derived_data",
+            "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+            "rank": 3,
+            "score": 0.043269764361607795
+          }
+        ],
+        "answer": "Based on the provided JSON output, here is the analysis of the wallet risk:\n\n### Document Findings\n1. **Document ID: synthetic_note_001**\n   - **Chunk ID:** synthetic_note_001::chunk_001\n   - **Claim:** This is a synthetic demo analyst note and not a real investigation, complaint, or legal document.\n   - **Source Kind:** synthetic_demo\n   - **Supported:** True\n   - **Synthetic Demo:** True\n\n2. **Document ID: derived_wallet_001**\n   - **Chunk ID:** derived_wallet_001::",
+        "limitations": [
+          "features_required",
+          "synthetic_demo_documents_are_not_independent_evidence"
+        ],
+        "tool_statuses": [
+          {
+            "name": "scoring",
+            "status": "ok",
+            "elapsed_ms": 0.6653999735135585,
+            "error": null
+          },
+          {
+            "name": "retrieval",
+            "status": "ok",
+            "elapsed_ms": 0.5644999910145998,
+            "error": null
+          }
+        ],
+        "llm": {
+          "provider": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "status": "ok",
+          "error": null
+        },
+        "trace": [
+          {
+            "step": 1,
+            "node": "parse_request",
+            "action": "node",
+            "status": "ok",
+            "detail": "question=For wallet 0x01da6f3b20d0540f24d390e28195ad7311516739, give the risk score, top model factors, and document sources.; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=combined"
+          },
+          {
+            "step": 2,
+            "node": "llm_tool_decision",
+            "action": "llm_tool_decision",
+            "status": "ok",
+            "detail": "source=llm_tool_calling; selected=scoring,retrieval; llm_status=ok; invalid=none; coverage_added=none"
+          },
+          {
+            "step": 3,
+            "node": "scoring",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={'reason': 'Compute the wallet risk model score or return insufficient_data if features are missing.'}"
+          },
+          {
+            "step": 4,
+            "node": "scoring",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=0.665"
+          },
+          {
+            "step": 5,
+            "node": "retrieval",
+            "action": "tool_call",
+            "status": "ok",
+            "detail": "arguments={'reason': 'Retrieve wallet-linked or general methodology document chunks with source IDs.'}"
+          },
+          {
+            "step": 6,
+            "node": "retrieval",
+            "action": "tool_result",
+            "status": "ok",
+            "detail": "elapsed_ms=0.564"
+          },
+          {
+            "step": 7,
+            "node": "execute_tools",
+            "action": "node",
+            "status": "ok",
+            "detail": "executed=scoring,retrieval"
+          },
+          {
+            "step": 8,
+            "node": "build_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          },
+          {
+            "step": 9,
+            "node": "validate_answer",
+            "action": "node",
+            "status": "ok",
+            "detail": null
+          }
+        ],
+        "validation_errors": [],
+        "execution_mode": "langgraph",
+        "tool_selection_source": "llm_tool_calling",
+        "selected_tools": [
+          "scoring",
+          "retrieval"
+        ]
+      },
+      "coverage_checks": [
+        {
+          "part": "risk_reports_missing_features",
+          "status": "ok"
+        },
+        {
+          "part": "model_factors_missing_data_is_explicit",
+          "status": "ok"
+        },
+        {
+          "part": "document_sources",
+          "status": "ok"
+        },
+        {
+          "part": "document_claims_supported_by_chunk_text",
+          "status": "ok"
+        }
+      ],
+      "grounding_checks": [
+        {
+          "chunk_id": "synthetic_note_001::chunk_001",
+          "document_id": "synthetic_note_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "synthetic_demo"
+        },
+        {
+          "chunk_id": "derived_wallet_001::chunk_001",
+          "document_id": "derived_wallet_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        },
+        {
+          "chunk_id": "derived_wallet_001::chunk_002",
+          "document_id": "derived_wallet_001",
+          "chunk_exists": true,
+          "supported_flag": true,
+          "supported_by_text": true,
+          "source_kind": "derived_data"
+        }
+      ],
+      "status": "ok",
+      "trace": "parse_request[node]:ok -> llm_tool_decision[llm_tool_decision]:ok -> scoring[tool_call]:ok -> scoring[tool_result]:ok -> retrieval[tool_call]:ok -> retrieval[tool_result]:ok -> execute_tools[node]:ok -> build_answer[node]:ok -> validate_answer[node]:ok"
+    }
+  ],
+  "failure_checks": [
+    {
+      "name": "retrieval_error_partial_structured_response",
+      "status": "ok",
+      "data_status": "partial",
+      "tool_statuses": [
+        {
+          "name": "retrieval",
+          "status": "error",
+          "elapsed_ms": 0.7054999878164381,
+          "error": "qdrant_unavailable"
+        }
+      ],
+      "llm_status": "ok",
+      "trace": "parse_request[node]:ok -> llm_tool_decision[llm_tool_decision]:ok -> retrieval[tool_call]:ok -> retrieval[tool_result]:error -> execute_tools[node]:ok -> build_answer[node]:ok -> validate_answer[node]:ok"
+    },
+    {
+      "name": "llm_unavailable_returns_tool_output",
+      "status": "ok",
+      "data_status": "ok",
+      "risk_status": "scored",
+      "source_count": 3,
+      "tool_statuses": [
+        {
+          "name": "scoring",
+          "status": "ok",
+          "elapsed_ms": 18.322300020372495,
+          "error": null
+        },
+        {
+          "name": "shap",
+          "status": "ok",
+          "elapsed_ms": 35.26199999032542,
+          "error": null
+        },
+        {
+          "name": "retrieval",
+          "status": "ok",
+          "elapsed_ms": 1.4828999992460012,
+          "error": null
+        }
+      ],
+      "llm_status": "unavailable",
+      "trace": "parse_request[node]:ok -> llm_tool_decision[llm_tool_decision]:ok -> scoring[tool_call]:ok -> scoring[tool_result]:ok -> shap[tool_call]:ok -> shap[tool_result]:ok -> retrieval[tool_call]:ok -> retrieval[tool_result]:ok -> execute_tools[node]:ok -> build_answer[node]:ok -> validate_answer[node]:ok"
+    }
+  ],
+  "validation_guard_examples": [
+    {
+      "name": "existing_chunk_unsupported_claim",
+      "status": "blocked",
+      "validation_errors": [
+        "unsupported_claim:guard_demo::chunk_001"
+      ],
+      "claim_supported_after_validation": false
+    },
+    {
+      "name": "forbidden_answer_phrase",
+      "status": "blocked",
+      "validation_errors": [
+        "forbidden_answer_phrase:proven fraud"
+      ]
+    }
+  ],
+  "status": "ok"
+}

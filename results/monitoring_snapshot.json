@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-10-05T17:17:53Z",
+  "lookback_days": 7,
+  "versions": {
+    "status": "ok",
+    "agent_version": "wallet_risk_agent_v1",
+    "prompt_version": "wallet_risk_agent_prompt_v1",
+    "model_version": "lightgbm_89ef90618da4df9d",
+    "schema_version": "scoring_explanation_v1",
+    "corpus_version": "demo_corpus_v1",
+    "index_version": "idx_422d98707f81",
+    "llm_provider": "ollama",
+    "ollama_model": "qwen2.5:7b-instruct"
+  },
+  "requests": {
+    "total": 161,
+    "availability_rate": 1.0,
+    "error_rate_5xx": 0.0,
+    "status_counts": {
+      "200": 161
+    }
+  },
+  "latency_ms": {
+    "count": 161,
+    "p50": 1.472,
+    "p95": 1000.366,
+    "max": 71877.546
+  },
+  "agent": {
+    "total": 33,
+    "insufficient_data_rate": 0.30303,
+    "no_documents_rate": 0.0,
+    "invalid_answer_rate": 0.0,
+    "answer_replacement_count": 3,
+    "answer_replacement_rate": 0.090909,
+    "answer_replacement_definition": "Agent responses whose limitations include an llm_answer_replaced_* marker; these are cases where the original LLM answer was rejected and a deterministic fallback answer was returned."
+  },
+  "source_correctness": {
+    "definition": "denominator: Agent responses where intent is documents/combined/general or response has sources/findings; numerator: eligible responses with supported findings, document_id/chunk_id on every source, and no foreign_wallet_source/missing_chunk/unsupported_claim validation errors",
+    "numerator": 15,
+    "denominator": 15,
+    "rate": 1.0
+  }
+}

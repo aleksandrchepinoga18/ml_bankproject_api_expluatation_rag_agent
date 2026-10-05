@@ -1,0 +1,317 @@
+{
+  "embedding_model": "hashing_vectorizer_word_1_2_dim384_v1",
+  "index_version": "idx_422d98707f81",
+  "top_k": 3,
+  "query_count": 12,
+  "variants": {
+    "wallet_filter_vector": {
+      "variant": "wallet_filter_vector",
+      "top_k": 3,
+      "query_count": 12,
+      "recall_at_k": 1.0,
+      "mrr": 0.7777777777777777,
+      "foreign_wallet_errors": 0,
+      "latency_ms_avg": 0.6459333332410703,
+      "latency_ms_max": 1.0461000201757997,
+      "examples": [
+        {
+          "query_id": "wallet_card_derived_wallet_001",
+          "top_chunks": [
+            "synthetic_note_001::chunk_001",
+            "derived_wallet_001::chunk_001",
+            "derived_wallet_001::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_001::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_002",
+          "top_chunks": [
+            "synthetic_note_002::chunk_001",
+            "derived_wallet_002::chunk_001",
+            "derived_wallet_002::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_002::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_003",
+          "top_chunks": [
+            "synthetic_note_003::chunk_001",
+            "derived_wallet_003::chunk_001",
+            "derived_wallet_003::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_003::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_004",
+          "top_chunks": [
+            "synthetic_note_004::chunk_001",
+            "derived_wallet_004::chunk_002",
+            "derived_wallet_004::chunk_001"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_004::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.3333333333333333
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_005",
+          "top_chunks": [
+            "synthetic_note_005::chunk_001",
+            "derived_wallet_005::chunk_001",
+            "derived_wallet_005::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_005::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        }
+      ]
+    },
+    "wallet_filter_bm25": {
+      "variant": "wallet_filter_bm25",
+      "top_k": 3,
+      "query_count": 12,
+      "recall_at_k": 1.0,
+      "mrr": 0.7916666666666666,
+      "foreign_wallet_errors": 0,
+      "latency_ms_avg": 0.057608337859467916,
+      "latency_ms_max": 0.1635999942664057,
+      "examples": [
+        {
+          "query_id": "wallet_card_derived_wallet_001",
+          "top_chunks": [
+            "synthetic_note_001::chunk_001",
+            "derived_wallet_001::chunk_001",
+            "derived_wallet_001::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_001::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_002",
+          "top_chunks": [
+            "synthetic_note_002::chunk_001",
+            "derived_wallet_002::chunk_001",
+            "derived_wallet_002::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_002::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_003",
+          "top_chunks": [
+            "synthetic_note_003::chunk_001",
+            "derived_wallet_003::chunk_001",
+            "derived_wallet_003::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_003::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_004",
+          "top_chunks": [
+            "synthetic_note_004::chunk_001",
+            "derived_wallet_004::chunk_001",
+            "derived_wallet_004::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_004::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_005",
+          "top_chunks": [
+            "synthetic_note_005::chunk_001",
+            "derived_wallet_005::chunk_001",
+            "derived_wallet_005::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_005::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        }
+      ]
+    },
+    "wallet_filter_vector_bm25_union": {
+      "variant": "wallet_filter_vector_bm25_union",
+      "top_k": 3,
+      "query_count": 12,
+      "recall_at_k": 1.0,
+      "mrr": 0.7777777777777777,
+      "foreign_wallet_errors": 0,
+      "latency_ms_avg": 0.9234666673971029,
+      "latency_ms_max": 1.49200001033023,
+      "examples": [
+        {
+          "query_id": "wallet_card_derived_wallet_001",
+          "top_chunks": [
+            "synthetic_note_001::chunk_001",
+            "derived_wallet_001::chunk_001",
+            "derived_wallet_001::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_001::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_002",
+          "top_chunks": [
+            "synthetic_note_002::chunk_001",
+            "derived_wallet_002::chunk_001",
+            "derived_wallet_002::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_002::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_003",
+          "top_chunks": [
+            "synthetic_note_003::chunk_001",
+            "derived_wallet_003::chunk_001",
+            "derived_wallet_003::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_003::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_004",
+          "top_chunks": [
+            "synthetic_note_004::chunk_001",
+            "derived_wallet_004::chunk_002",
+            "derived_wallet_004::chunk_001"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_004::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.3333333333333333
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_005",
+          "top_chunks": [
+            "synthetic_note_005::chunk_001",
+            "derived_wallet_005::chunk_001",
+            "derived_wallet_005::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_005::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        }
+      ]
+    },
+    "wallet_filter_vector_bm25_union_reranker": {
+      "variant": "wallet_filter_vector_bm25_union_reranker",
+      "top_k": 3,
+      "query_count": 12,
+      "recall_at_k": 1.0,
+      "mrr": 0.7916666666666666,
+      "foreign_wallet_errors": 0,
+      "latency_ms_avg": 1.155599992974506,
+      "latency_ms_max": 1.5016999968793243,
+      "examples": [
+        {
+          "query_id": "wallet_card_derived_wallet_001",
+          "top_chunks": [
+            "synthetic_note_001::chunk_001",
+            "derived_wallet_001::chunk_001",
+            "derived_wallet_001::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_001::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_002",
+          "top_chunks": [
+            "synthetic_note_002::chunk_001",
+            "derived_wallet_002::chunk_001",
+            "derived_wallet_002::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_002::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_003",
+          "top_chunks": [
+            "synthetic_note_003::chunk_001",
+            "derived_wallet_003::chunk_001",
+            "derived_wallet_003::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_003::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_004",
+          "top_chunks": [
+            "synthetic_note_004::chunk_001",
+            "derived_wallet_004::chunk_001",
+            "derived_wallet_004::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_004::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        },
+        {
+          "query_id": "wallet_card_derived_wallet_005",
+          "top_chunks": [
+            "synthetic_note_005::chunk_001",
+            "derived_wallet_005::chunk_001",
+            "derived_wallet_005::chunk_002"
+          ],
+          "relevant_chunk_ids": [
+            "derived_wallet_005::chunk_001"
+          ],
+          "recall": 1.0,
+          "reciprocal_rank": 0.5
+        }
+      ]
+    }
+  },
+  "primary_variant": "wallet_filter_bm25"
+}

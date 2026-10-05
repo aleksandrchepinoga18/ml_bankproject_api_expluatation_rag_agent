@@ -1,0 +1,14 @@
+{
+  "collection_name": "wallet_risk_demo_corpus",
+  "embedding_model": "hashing_vectorizer_word_1_2_dim384_v1",
+  "embedding_dim": 384,
+  "index_version": "idx_422d98707f81",
+  "corpus_version": "demo_corpus_v1",
+  "local_index_path": "data/vector_index/local_dense_index.json",
+  "qdrant_points_path": "data/vector_index/qdrant_points.jsonl",
+  "records": 49,
+  "qdrant": {
+    "status": "pending_missing_qdrant_client",
+    "reason": "qdrant-client is not importable in this Python environment"
+  }
+}

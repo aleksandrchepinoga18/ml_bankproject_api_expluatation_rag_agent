@@ -1,0 +1,382 @@
+{
+  "status": "ok",
+  "reference_source": {
+    "features": "monitoring/reference/reference_features.parquet",
+    "scores": "monitoring/reference/reference_scores.parquet"
+  },
+  "current_source": "monitoring/logs/predictions_*.jsonl",
+  "fixed_bins_path": "results/reference_bins.json",
+  "psi_report_path": "results/psi_fixed_bins_report.json",
+  "drift_is_quality_evidence": false,
+  "auto_retrain_started": false,
+  "results": {
+    "score": {
+      "status": "ok",
+      "psi": 1.9771258936213463,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "first_tx_timestamp": {
+      "status": "ok",
+      "psi": 1.974711563213491,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        2,
+        3,
+        5,
+        7,
+        8,
+        9
+      ],
+      "current_below_reference_min": 1,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "last_tx_timestamp": {
+      "status": "ok",
+      "psi": 1.7809975423352953,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        2,
+        3,
+        4,
+        7,
+        8,
+        9
+      ],
+      "current_below_reference_min": 5,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "wallet_age": {
+      "status": "ok",
+      "psi": 1.708314323312027,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        4,
+        6,
+        7,
+        9
+      ],
+      "current_below_reference_min": 9,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "incoming_tx_count": {
+      "status": "ok",
+      "psi": 1.7122752740058536,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        2,
+        3,
+        5,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "outgoing_tx_count": {
+      "status": "ok",
+      "psi": 1.8581769600700881,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "net_incoming_tx_count": {
+      "status": "ok",
+      "psi": 1.986004074167404,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        3,
+        4,
+        5,
+        8,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "total_gas_paid_eth": {
+      "status": "ok",
+      "psi": 2.1495111541682212,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        3,
+        5,
+        6,
+        7,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "avg_gas_paid_per_tx_eth": {
+      "status": "ok",
+      "psi": 1.7809770417602264,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        2,
+        3,
+        6,
+        8,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "risky_tx_count": {
+      "status": "ok",
+      "psi": 1.834867936269839,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        2,
+        4,
+        5,
+        7
+      ],
+      "current_below_reference_min": 4,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "risky_unique_contract_count": {
+      "status": "ok",
+      "psi": 1.8546273228367562,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        3,
+        5,
+        6
+      ],
+      "current_below_reference_min": 4,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "risky_last_tx_timestamp": {
+      "status": "ok",
+      "psi": 1.6352902520625525,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        2,
+        3,
+        6,
+        7
+      ],
+      "current_below_reference_min": 14,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "risky_first_last_tx_timestamp_diff": {
+      "status": "ok",
+      "psi": 1.8062257262420374,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        2,
+        3,
+        5,
+        7
+      ],
+      "current_below_reference_min": 4,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "risky_sum_outgoing_amount_eth": {
+      "status": "ok",
+      "psi": 1.6326412968061879,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        2,
+        3,
+        5,
+        7
+      ],
+      "current_below_reference_min": 13,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "outgoing_tx_sum_eth": {
+      "status": "ok",
+      "psi": 1.773590723056877,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        4,
+        5,
+        7,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "incoming_tx_sum_eth": {
+      "status": "ok",
+      "psi": 1.7734961686030195,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        4,
+        5,
+        7,
+        9
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "outgoing_tx_avg_eth": {
+      "status": "ok",
+      "psi": 1.9739054270438858,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        8
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 1,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "incoming_tx_avg_eth": {
+      "status": "ok",
+      "psi": 1.9738954181248747,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        8
+      ],
+      "current_below_reference_min": 4,
+      "current_above_reference_max": 1,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "max_eth_ever": {
+      "status": "ok",
+      "psi": 1.708481129819937,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        0,
+        1,
+        4,
+        5,
+        7
+      ],
+      "current_below_reference_min": 0,
+      "current_above_reference_max": 1,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "min_eth_ever": {
+      "status": "ok",
+      "psi": 1.8981178740724942,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        2,
+        3,
+        7,
+        8,
+        9
+      ],
+      "current_below_reference_min": 12,
+      "current_above_reference_max": 0,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    },
+    "total_balance_eth": {
+      "status": "ok",
+      "psi": 1.8497985947791746,
+      "reference_count": 226306,
+      "current_count": 51,
+      "empty_reference_bins": [],
+      "empty_current_bins": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7
+      ],
+      "current_below_reference_min": 9,
+      "current_above_reference_max": 1,
+      "method": "fixed_reference_quantile_bins_with_plus_one_smoothing"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+Evaluation protocol: threshold selected on validation by F1; test evaluated once with that fixed threshold.
+Train ROC AUC: 0.9290
+Val ROC AUC: 0.8738
+Test ROC AUC: 0.8720
+Best threshold from validation: 0.3444
+
+              precision    recall  f1-score   support
+
+           0       0.85      0.83      0.84     67464
+           1       0.71      0.74      0.73     38621
+
+    accuracy                           0.80    106085
+   macro avg       0.78      0.79      0.78    106085
+weighted avg       0.80      0.80      0.80    106085

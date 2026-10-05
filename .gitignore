@@ -1,0 +1,93 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Data files (опционально: если не хочешь коммитить датасет)
+
+*.parquet
+# *.csv
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+*.sqlite3
+
+# Local runtime artifacts
+.matplotlib/
+mlruns/
+project_review/
+project_review.zip
+monitoring/alerts/
+monitoring/drift_logs/
+monitoring/explanations/
+monitoring/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models and outputs (обычно НЕ коммитят)
+models/
+plots/
+notebooks/
+
+# Publication allowlist/denylist overrides.
+# Keep CI runtime model artifacts, but ignore other local model experiments.
+!models/
+models/*
+!models/lightgbm_model.pkl
+!models/lightgbm_best_threshold.pkl
+!models/lightgbm_feature_names.pkl
+!models/lightgbm_preprocessing.pkl
+!models/lightgbm_best_params.pkl
+!models/lightgbm_param_search.pkl
+
+# Keep public corpus/index fixtures, but exclude private or bulky local data.
+data/dataset.parquet
+data/vector_index/local_dense_index_reindexed.json
+monitoring/reference/
+monitoring/reference/*.csv
+monitoring/reference/*.parquet
+monitoring/debug_log.txt

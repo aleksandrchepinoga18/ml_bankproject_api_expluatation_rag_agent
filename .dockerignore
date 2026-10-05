@@ -1,0 +1,42 @@
+# Local secrets and environment
+.env
+.venv/
+venv/
+env/
+
+# Git and editor metadata
+.git/
+.github/
+.vscode/
+.idea/
+
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.matplotlib/
+
+# Local runtime logs and mutable state
+monitoring/logs/
+monitoring/alerts/
+monitoring/drift_logs/
+monitoring/explanations/
+monitoring/reference/
+mlruns/
+mlflow/
+
+# Large/private local data and generated review dumps
+data/dataset.parquet
+data/vector_index/local_dense_index_reindexed.json
+*.parquet
+monitoring/debug_log.txt
+project_review/
+project_review.zip
+plots/
+notebooks/
+
+# OS noise
+.DS_Store
+Thumbs.db

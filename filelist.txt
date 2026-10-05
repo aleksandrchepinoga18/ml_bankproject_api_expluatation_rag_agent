@@ -1,0 +1,22 @@
+Publication manifest for the first GitHub commit.
+
+Include:
+
+- Source code: app/, src/, monitoring/*.py, scripts/, tests/.
+- Configuration: Dockerfile, docker-compose.yml, .dockerignore, .gitignore, .env.example, pyproject.toml, requirements.txt, requirements-dev.txt.
+- CI: .github/workflows/ci.yml, .github/workflows/test-deploy.yml.
+- Public docs: README.md, docs/, RAG_IMPLEMENTATION_PLAN.md, TZ_Scoring_RAG_Agent_Production_v2.md.
+- Public test corpus and retrieval fixtures: data/corpus/, data/vector_index/local_dense_index.json, data/vector_index/qdrant_points.jsonl, data/retrieval_eval.json, data/data_manifest.json.
+- CI/runtime model artifacts: models/lightgbm_model.pkl, models/lightgbm_best_threshold.pkl, models/lightgbm_feature_names.pkl, models/lightgbm_preprocessing.pkl, models/lightgbm_best_params.pkl, models/lightgbm_param_search.pkl.
+- Public reports needed for review: results/*.json, results/*.txt, results/*.csv.
+
+Exclude:
+
+- Secrets and local env files: .env.
+- Raw/private or bulky local data: data/dataset.parquet, monitoring/reference/.
+- Runtime logs and mutable state: monitoring/logs/, monitoring/alerts/, monitoring/drift_logs/, monitoring/explanations/, mlruns/, mlflow/.
+- Intermediate/debug artifacts: monitoring/debug_log.txt, data/vector_index/local_dense_index_reindexed.json.
+- Local caches and environments: __pycache__/, .pytest_cache/, .matplotlib/, .venv/, venv/.
+- Generated review dumps and exploratory artifacts: project_review/, project_review.zip, plots/, notebooks/.
+
+Do not use this file as an automatic allowlist; verify with git status and git check-ignore before commit.

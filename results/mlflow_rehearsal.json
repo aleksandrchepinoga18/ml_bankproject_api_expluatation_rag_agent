@@ -1,0 +1,58 @@
+{
+  "status": "completed",
+  "tracking_uri": "sqlite:///mlflow/mlflow.db",
+  "registry_uri": "sqlite:///mlflow/mlflow.db",
+  "model_name": "WalletRiskLightGBMPackage",
+  "runs": [
+    {
+      "status": "logged",
+      "run_id": "2f2da3016d3d4fd794bc47d198ddaa24",
+      "model_name": "WalletRiskLightGBMPackage",
+      "model_version": "1",
+      "tracking_uri": "sqlite:///mlflow/mlflow.db",
+      "registry_uri": "sqlite:///mlflow/mlflow.db",
+      "message": null
+    },
+    {
+      "status": "logged",
+      "run_id": "f38e6d75bf134180906650e69f4fb79e",
+      "model_name": "WalletRiskLightGBMPackage",
+      "model_version": "2",
+      "tracking_uri": "sqlite:///mlflow/mlflow.db",
+      "registry_uri": "sqlite:///mlflow/mlflow.db",
+      "message": null
+    }
+  ],
+  "aliases": {
+    "initial_champion": {
+      "status": "alias_set",
+      "run_id": null,
+      "model_name": "WalletRiskLightGBMPackage",
+      "model_version": "1",
+      "tracking_uri": null,
+      "registry_uri": null,
+      "message": null
+    },
+    "candidate": {
+      "status": "alias_set",
+      "run_id": null,
+      "model_name": "WalletRiskLightGBMPackage",
+      "model_version": "2",
+      "tracking_uri": null,
+      "registry_uri": null,
+      "message": null
+    }
+  },
+  "rollback": {
+    "operation": {
+      "status": "alias_set",
+      "run_id": null,
+      "model_name": "WalletRiskLightGBMPackage",
+      "model_version": "1",
+      "tracking_uri": null,
+      "registry_uri": null,
+      "message": null
+    },
+    "champion_version_after_rollback": "1"
+  }
+}

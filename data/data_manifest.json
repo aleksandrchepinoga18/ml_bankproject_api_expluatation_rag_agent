@@ -1,0 +1,782 @@
+{
+  "manifest_version": "1.0",
+  "audit_date": "2026-09-29",
+  "dataset": {
+    "path": "data/dataset.parquet",
+    "sha256": "7BCBE3A162BE9AC2D1F7EE89A0241875E200ECA717B728A52F009AD9851D3DC4",
+    "rows": 442961,
+    "columns": 78,
+    "unique_wallets": 74476,
+    "target_counts": {
+      "0": 276761,
+      "1": 166200
+    },
+    "schema": [
+      {
+        "name": "borrow_block_number",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "borrow_timestamp",
+        "dtype": "float64",
+        "role": "candidate_prediction_time",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "wallet_address",
+        "dtype": "object",
+        "role": "entity_id",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "first_tx_timestamp",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "last_tx_timestamp",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "wallet_age",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "incoming_tx_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "outgoing_tx_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "net_incoming_tx_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_gas_paid_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "avg_gas_paid_per_tx_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_tx_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_unique_contract_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_first_tx_timestamp",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_last_tx_timestamp",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_first_last_tx_timestamp_diff",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risky_sum_outgoing_amount_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "outgoing_tx_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "incoming_tx_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "outgoing_tx_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "incoming_tx_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "max_eth_ever",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "min_eth_ever",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_balance_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risk_factor",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_collateral_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_collateral_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_available_borrows_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "total_available_borrows_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "avg_weighted_risk_factor",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "risk_factor_above_threshold_daily_count",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "avg_risk_factor",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "max_risk_factor",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "borrow_amount_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "borrow_amount_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "borrow_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "repay_amount_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "repay_amount_avg_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "repay_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "borrow_repay_diff_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "deposit_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "deposit_amount_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "time_since_first_deposit",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "withdraw_amount_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "withdraw_deposit_diff_if_positive_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "liquidation_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "time_since_last_liquidated",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "liquidation_amount_sum_eth",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_adx",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_adxr",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_apo",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_aroonosc",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_aroonup",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_atr",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_cci",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_cmo",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_correl",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_dx",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_fastk",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_fastd",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_ht_trendmode",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_linearreg_slope",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macd_macdext",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macd_macdfix",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macd",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macdsignal_macdext",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macdsignal_macdfix",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_macdsignal",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_max_drawdown_365d",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_natr",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_plus_di",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_plus_dm",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_ppo",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_rocp",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "market_rocr",
+        "dtype": "float64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "unique_borrow_protocol_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "unique_lending_protocol_count",
+        "dtype": "int64",
+        "role": "feature",
+        "non_null": 442961,
+        "nulls": 0
+      },
+      {
+        "name": "target",
+        "dtype": "int64",
+        "role": "label",
+        "non_null": 442961,
+        "nulls": 0
+      }
+    ]
+  },
+  "model_boundary": {
+    "unit_of_prediction": "one row-level wallet risk observation",
+    "entity_id": "wallet_address",
+    "target": "target",
+    "prediction_time_proxy": "borrow_timestamp",
+    "prediction_time_status": "candidate_proxy_requires_source_confirmation",
+    "feature_store_status": "not_available"
+  },
+  "features": {
+    "raw_candidate_feature_count": 76,
+    "removed_before_training": [
+      "market_rocp",
+      "market_apo",
+      "market_macdsignal_macdfix",
+      "market_macd_macdfix",
+      "borrow_block_number",
+      "borrow_timestamp",
+      "risky_first_tx_timestamp",
+      "market_macd_macdext",
+      "market_macd",
+      "market_macdsignal",
+      "liquidation_count"
+    ],
+    "model_feature_count": 65,
+    "model_features": [
+      "first_tx_timestamp",
+      "last_tx_timestamp",
+      "wallet_age",
+      "incoming_tx_count",
+      "outgoing_tx_count",
+      "net_incoming_tx_count",
+      "total_gas_paid_eth",
+      "avg_gas_paid_per_tx_eth",
+      "risky_tx_count",
+      "risky_unique_contract_count",
+      "risky_last_tx_timestamp",
+      "risky_first_last_tx_timestamp_diff",
+      "risky_sum_outgoing_amount_eth",
+      "outgoing_tx_sum_eth",
+      "incoming_tx_sum_eth",
+      "outgoing_tx_avg_eth",
+      "incoming_tx_avg_eth",
+      "max_eth_ever",
+      "min_eth_ever",
+      "total_balance_eth",
+      "risk_factor",
+      "total_collateral_eth",
+      "total_collateral_avg_eth",
+      "total_available_borrows_eth",
+      "total_available_borrows_avg_eth",
+      "avg_weighted_risk_factor",
+      "risk_factor_above_threshold_daily_count",
+      "avg_risk_factor",
+      "max_risk_factor",
+      "borrow_amount_sum_eth",
+      "borrow_amount_avg_eth",
+      "borrow_count",
+      "repay_amount_sum_eth",
+      "repay_amount_avg_eth",
+      "repay_count",
+      "borrow_repay_diff_eth",
+      "deposit_count",
+      "deposit_amount_sum_eth",
+      "time_since_first_deposit",
+      "withdraw_amount_sum_eth",
+      "withdraw_deposit_diff_if_positive_eth",
+      "time_since_last_liquidated",
+      "liquidation_amount_sum_eth",
+      "market_adx",
+      "market_adxr",
+      "market_aroonosc",
+      "market_aroonup",
+      "market_atr",
+      "market_cci",
+      "market_cmo",
+      "market_correl",
+      "market_dx",
+      "market_fastk",
+      "market_fastd",
+      "market_ht_trendmode",
+      "market_linearreg_slope",
+      "market_macdsignal_macdext",
+      "market_max_drawdown_365d",
+      "market_natr",
+      "market_plus_di",
+      "market_plus_dm",
+      "market_ppo",
+      "market_rocr",
+      "unique_borrow_protocol_count",
+      "unique_lending_protocol_count"
+    ],
+    "preprocessing": "replace inf with nan; fill missing values with train medians",
+    "imputation_value_count": 0
+  },
+  "split": {
+    "strategy": "group split by wallet_address; wallet target is max(target)",
+    "random_seed": 42,
+    "rows": {
+      "train": 226306,
+      "validation": 110570,
+      "test": 106085
+    },
+    "unique_wallets": {
+      "train": 37238,
+      "validation": 18619,
+      "test": 18619
+    },
+    "wallet_intersections": {
+      "train_validation": 0,
+      "train_test": 0,
+      "validation_test": 0
+    },
+    "wallet_group_hashes": {
+      "train": "3B8DE3787D97D2ABBE5D183A83B7D5F6751D60A6821A5F3E0C535FC3AFAFCF10",
+      "validation": "8DF7233E12A3163279410F9520D45615BB7D6B9ED0A89A77F456EFC6C284D7A4",
+      "test": "1A06E7B189D4EB939454B9EDB136AEAB33FB513618A5FDAA40DD7F6A333B18AF"
+    }
+  },
+  "temporal_checks": {
+    "prediction_time_proxy": "borrow_timestamp",
+    "prediction_time_status": "candidate_proxy_requires_source_confirmation",
+    "post_prediction_timestamp_counts": {
+      "first_tx_timestamp": 0,
+      "last_tx_timestamp": 202,
+      "risky_first_tx_timestamp": 0,
+      "risky_last_tx_timestamp": 0
+    },
+    "model_temporal_features": [
+      "first_tx_timestamp",
+      "last_tx_timestamp",
+      "wallet_age",
+      "risky_last_tx_timestamp",
+      "risky_first_last_tx_timestamp_diff",
+      "time_since_first_deposit",
+      "time_since_last_liquidated"
+    ],
+    "leakage_candidates": [
+      "last_tx_timestamp"
+    ],
+    "status": "requires_review"
+  },
+  "artifacts": {
+    "metrics_path": "results/LightGBM_metrics.json",
+    "metrics": {
+      "threshold_source": "validation_f1",
+      "best_threshold": 0.34438552759270996,
+      "validation_f1_at_threshold": 0.7230716366761413,
+      "train_roc_auc": 0.9290107557674253,
+      "val_roc_auc": 0.8737906208411589,
+      "test_roc_auc": 0.872005922191997,
+      "test_accuracy": 0.7984069378328699,
+      "test_class_1_precision": 0.7138815120001986,
+      "test_class_1_recall": 0.744750265399653,
+      "test_class_1_f1": 0.7289892538523925
+    },
+    "top50_path": "results/LightGBM_top50_risky_wallets.csv",
+    "top50": {
+      "rows": 50,
+      "unique_wallets": 50,
+      "aggregation_rule": "max_row_probability",
+      "min_probability": 0.9982342169619584,
+      "max_probability": 0.9993000074715584,
+      "min_records_count": 32,
+      "max_records_count": 2759
+    },
+    "model_features_sha256": "E9A9EBE51DBDA485152E5D396857E794BB69AA360089427DA47207204A4FB396"
+  },
+  "dependencies": {
+    "requirements_txt": {
+      "Flask": "3.0.0",
+      "fastapi": "0.111.0",
+      "uvicorn": "0.30.0",
+      "pandas": "2.1.0",
+      "scikit-learn": "1.5.2",
+      "lightgbm": "4.1.0",
+      "scipy": "1.11.0",
+      "psycopg2-binary": "2.9.7",
+      "matplotlib": "3.8.0",
+      "seaborn": "0.13.0",
+      "shap": "0.46.0",
+      "pyarrow": "14.0.1",
+      "requests": "2.33.1",
+      "mlflow": "3.16.1",
+      "qdrant-client": "1.15.1",
+      "pydantic": "2.7.4",
+      "packaging": "25.0",
+      "langgraph": "0.2.76",
+      "langchain-core": "0.3.79",
+      "langgraph-checkpoint": "2.1.2",
+      "langgraph-sdk": "0.1.74",
+      "langsmith": "0.4.31",
+      "jsonpatch": "1.33",
+      "jsonpointer": "3.0.0",
+      "requests-toolbelt": "1.0.0",
+      "zstandard": "0.23.0",
+      "orjson": "3.11.3",
+      "ormsgpack": "1.10.0"
+    },
+    "installed_versions": {
+      "Flask": "3.0.0",
+      "pandas": "2.1.0",
+      "scikit-learn": "1.5.2",
+      "lightgbm": "4.1.0",
+      "scipy": "1.11.0",
+      "psycopg2-binary": "2.9.7",
+      "matplotlib": "3.8.0",
+      "seaborn": "0.13.0",
+      "shap": "0.46.0",
+      "pyarrow": "14.0.1",
+      "requests": "2.33.1",
+      "mlflow": "3.16.1"
+    }
+  },
+  "limitations": [
+    "Dataset provenance and external source version are not documented.",
+    "Feature availability at prediction time is not fully proven.",
+    "Temporal leakage review remains open for timestamp and aggregate features.",
+    "Saved metrics are row-level test metrics, not wallet-level or production quality metrics."
+  ]
+}

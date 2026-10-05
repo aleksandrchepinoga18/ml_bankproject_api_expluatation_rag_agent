@@ -1,0 +1,241 @@
+{
+  "status": "partially_verified",
+  "section_7_found": true,
+  "section_7_source": "TZ_Scoring_RAG_Agent_Production_v2.md",
+  "synthetic_data_warning": "Synthetic labels and synthetic_demo documents are demo/plumbing artifacts only; they are not real labels, real investigations, or model quality evidence.",
+  "real_docker_ollama_checks": [
+    {
+      "scenario": "Docker readiness",
+      "actual": {
+        "endpoint": "/health/ready",
+        "status": "ready",
+        "checks": {
+          "model": true,
+          "scoring_adapter": true,
+          "retrieval_index": true,
+          "corpus": true
+        }
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Runtime version",
+      "actual": {
+        "endpoint": "/version",
+        "llm_provider": "ollama",
+        "ollama_model": "qwen2.5:7b-instruct",
+        "model_version": "lightgbm_89ef90618da4df9d",
+        "schema_version": "scoring_explanation_v1",
+        "corpus_version": "demo_corpus_v1",
+        "index_version": "idx_422d98707f81"
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Metrics endpoint",
+      "actual": {
+        "endpoint": "/metrics",
+        "requests_total": 117,
+        "availability_rate": 1.0,
+        "error_rate_5xx": 0.0,
+        "agent_total": 33,
+        "source_correctness_numerator": 15,
+        "source_correctness_denominator": 15,
+        "source_correctness_rate": 1.0
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Structured logs and metrics reflect requests",
+      "actual": {
+        "api_log": "monitoring/logs/api_requests_2026-10-05.jsonl",
+        "agent_log": "monitoring/logs/agent_requests_2026-10-05.jsonl",
+        "api_fields": ["timestamp", "method", "path", "status_code", "latency_ms", "availability_ok", "headers"],
+        "agent_fields": ["route", "intent", "data_status", "risk_status", "source_correctness", "tool_statuses", "llm", "limitations"]
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real /analyze document request with Ollama",
+      "actual": {
+        "route": "/analyze",
+        "intent": "documents",
+        "selected_tools": ["retrieval"],
+        "llm": {
+          "provider": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "status": "ok",
+          "done_reason": "stop"
+        },
+        "source_count": 3,
+        "source_correctness": true
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real /chat missing features does not mean no risk",
+      "actual": {
+        "route": "/chat",
+        "data_status": "insufficient_data",
+        "risk_status": "insufficient_data",
+        "score": null,
+        "limitations": ["features_required", "llm_answer_replaced_for_insufficient_data"],
+        "llm": {
+          "provider": "ollama",
+          "model": "qwen2.5:7b-instruct",
+          "status": "ok",
+          "done_reason": "stop"
+        }
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real general methodology request",
+      "actual": {
+        "route": "/chat",
+        "intent": "general",
+        "selected_tools": ["retrieval"],
+        "llm_status": "ok",
+        "done_reason": "stop",
+        "sources": [
+          "method_feature_dictionary::chunk_001",
+          "method_scoring_limits::chunk_001",
+          "method_retrieval_rules::chunk_001"
+        ]
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real methodology request with wallet and cite sources",
+      "actual": {
+        "route": "/chat",
+        "operator_confirmed": true,
+        "intent": "general",
+        "selected_tools": ["retrieval"],
+        "source_prefix": "method_",
+        "wallet_observation_substitution": false
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real address without features",
+      "actual": {
+        "route": "/analyze",
+        "data_status": "insufficient_data",
+        "risk_status": "insufficient_data",
+        "score": null,
+        "reason": "features_required",
+        "answer_rejects_low_risk_or_no_fraud_conclusion": true
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real not_requested document-only answer",
+      "actual": {
+        "operator_confirmed": true,
+        "risk_status": "not_requested",
+        "answer_says_risk_not_requested": true,
+        "answer_says_insufficient_data": false
+      },
+      "status": "passed"
+    },
+    {
+      "scenario": "Real answer replacement metrics",
+      "actual": {
+        "operator_confirmed": true,
+        "metrics_include_answer_replacement_count": true,
+        "metrics_include_answer_replacement_rate": true,
+        "metrics_include_answer_replacement_definition": true
+      },
+      "status": "passed"
+    }
+  ],
+  "issues_found_and_fixed_locally": [
+    {
+      "issue": "Insufficient-data deterministic answer could say LLM unavailable even when llm.status=ok.",
+      "fix": "src/agent.py now adds the LLM-unavailable sentence only when final LLM status is unavailable or error.",
+      "local_verification": "python -m pytest tests/test_agent.py tests/test_fastapi_app.py tests/test_observability.py -q -> 34 passed",
+      "docker_status": "passed_operator_confirmed"
+    },
+    {
+      "issue": "Methodology request with wallet address, risk, and cite sources was routed as combined and returned wallet/synthetic docs instead of methodology docs.",
+      "fix": "classify_intent now treats explicit methodology/rules/limits/feature-dictionary questions as general unless score/probability computation is requested.",
+      "local_verification": "python -m pytest tests/test_agent.py::test_methodology_with_risk_and_sources_stays_general -q -> passed; target suite -> 34 passed",
+      "docker_status": "passed_operator_confirmed"
+    },
+    {
+      "issue": "Document-only /analyze with risk.status=not_requested could use insufficient-data wording.",
+      "fix": "Unsafe LLM text is replaced with a deterministic answer when it contradicts not_requested risk status.",
+      "local_verification": "python -m pytest tests/test_agent.py::test_langgraph_replaces_not_requested_answer_that_claims_insufficient_data tests/test_observability.py::test_collect_metrics_counts_replaced_llm_answers -q -> 2 passed",
+      "docker_status": "passed_operator_confirmed"
+    },
+    {
+      "issue": "LLM answer replacement was visible only indirectly through limitations.",
+      "fix": "Metrics now expose answer replacement count, rate, and definition for llm_answer_replaced_* events.",
+      "local_verification": "python -m pytest tests/test_observability.py::test_collect_metrics_counts_replaced_llm_answers -q -> passed",
+      "docker_status": "passed_operator_confirmed"
+    },
+    {
+      "issue": "Local runtime artifacts were not fully protected from accidental commits.",
+      "fix": ".gitignore now excludes local logs, alerts, drift logs, explanations, mlruns, .matplotlib, project_review, local DB files.",
+      "local_verification": "git check-ignore -v confirmed .env, monitoring logs/alerts, mlruns, .matplotlib, project_review.zip, and mlflow/mlflow.db are ignored.",
+      "docker_status": "not_applicable"
+    }
+  ],
+  "local_mock_testclient_acceptance": [
+    {"scenario": "7.1 valid features and linked document", "status": "passed"},
+    {"scenario": "7.2 address without features", "status": "passed"},
+    {"scenario": "7.3 foreign wallet document excluded", "status": "passed"},
+    {"scenario": "7.4 stale legacy JSON", "status": "passed"},
+    {"scenario": "7.5 unavailable retrieval/LLM partial response", "status": "passed"},
+    {"scenario": "7.6 prompt injection in user/document text", "status": "passed"},
+    {"scenario": "7.7 multiple rows aggregation", "status": "passed"},
+    {
+      "scenario": "7.8 rollback version",
+      "status": "not_run",
+      "skip_reason": "Rollback is prepared but not executed by instruction; no service stop, pull, deployment, or rollback was run."
+    }
+  ],
+  "mock_llm_checks": [
+    {
+      "scenario": "fake provider tool calling, timeout, truncation retry/fallback",
+      "status": "passed"
+    }
+  ],
+  "dashboard_snapshot": {
+    "snapshot": "results/monitoring_snapshot.json",
+    "dashboard": "docs/local_monitoring_dashboard.html",
+    "generated_at": "2026-10-05T16:56:03Z",
+    "versions": {
+      "llm_provider": "ollama",
+      "ollama_model": "qwen2.5:7b-instruct",
+      "model_version": "lightgbm_89ef90618da4df9d"
+    },
+    "limitations": [
+      "Latency aggregates all HTTP requests and is not an Agent-only latency estimate.",
+      "Source correctness checks source/chunk link structure and does not guarantee factual truth of every generated sentence."
+    ]
+  },
+  "ci_deployment_rollback": [
+    {
+      "scenario": "CI workflow",
+      "status": "not_run",
+      "skip_reason": "Requires push/PR to GitHub Actions."
+    },
+    {
+      "scenario": "test deployment",
+      "status": "not_run",
+      "skip_reason": "Remote deployment was explicitly deferred and no test server/secrets are configured."
+    },
+    {
+      "scenario": "rollback",
+      "status": "not_run",
+      "skip_reason": "Rollback intentionally not executed."
+    },
+  ],
+  "label_provenance": {
+    "status": "not_trusted",
+    "reason": "label_source column missing",
+    "trusted_quality_evidence": false
+  }
+}
