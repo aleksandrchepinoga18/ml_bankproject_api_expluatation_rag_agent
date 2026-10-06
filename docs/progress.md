@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-10-05.
+Last updated: 2026-10-06.
 
 ## Current Status
 
@@ -274,6 +274,26 @@ Next stage:
 - Check files before commit and open a GitHub PR to run CI.
 - Remote deployment remains `not_run`.
 - Rollback remains `not_run`.
+
+## GitHub CI On 2026-10-06
+
+GitHub Actions run:
+[`37521638488`](https://github.com/aleksandrchepinoga18/ml_bankproject_api_expluatation_rag_agent/actions/runs/37521638488).
+
+- Title: `Make CI tests independent of unpublished dataset`.
+- Commit SHA: `6421dfed1ddd1e5243286f95d7ae2bac6f7cc3d7`.
+- Overall status: `success`.
+- `Unit, Contract, and Corpus Checks`: `success`.
+  - `Compile Python modules`: `success`.
+  - `Lint with Ruff`: `success`.
+  - `Type check with mypy`: `success`.
+  - `Check runtime artifacts for full tests`: `success`.
+  - `Check corpus and local retrieval index`: `success`.
+  - `Run tests with mock or disabled LLM`: `success`.
+- `Docker Build Dry Run`: `success`.
+- GitHub annotations: 2 warnings about Node.js 20 deprecation for GitHub Actions, plus 1 Ubuntu runner-image notice; none failed the run.
+- Remote deployment: `not_run`.
+- Rollback verification: `not_run`.
 
 Command 10 status:
 
