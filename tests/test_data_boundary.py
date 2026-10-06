@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src.data_preparation import load_and_clean_data, remove_high_corr_features, split_data
 
@@ -26,11 +27,45 @@ def _manifest():
         return json.load(f)
 
 
-def test_data_manifest_matches_dataset_contract():
-    manifest = _manifest()
-    df = pd.read_parquet(DATASET_PATH)
+def _full_dataset_path() -> Path:
+    if not DATASET_PATH.exists():
+        pytest.skip(
+            "full data check requires unpublished data/dataset.parquet; "
+            "CI intentionally does not download or commit it"
+        )
+    return DATASET_PATH
 
-    assert manifest["dataset"]["sha256"] == _sha256_file(DATASET_PATH)
+
+def test_synthetic_wallet_group_split_has_no_intersections(synthetic_dataset_path: Path):
+    df = remove_high_corr_features(load_and_clean_data(str(synthetic_dataset_path)))
+    train, validation, test = split_data(df, random_state=42, group_col="wallet_address")
+
+    parts = {"train": train, "validation": validation, "test": test}
+    wallet_sets = {
+        name: set(part["wallet_address"].dropna().astype(str))
+        for name, part in parts.items()
+    }
+
+    assert {name: len(part) for name, part in parts.items()} == {
+        "train": 4,
+        "validation": 2,
+        "test": 2,
+    }
+    assert all(len(wallets) == len(parts[name]) for name, wallets in wallet_sets.items())
+    assert not (wallet_sets["train"] & wallet_sets["validation"])
+    assert not (wallet_sets["train"] & wallet_sets["test"])
+    assert not (wallet_sets["validation"] & wallet_sets["test"])
+    assert "borrow_timestamp" not in train.columns
+    assert "market_rocp" not in train.columns
+    assert "wallet_address" in train.columns
+
+
+def test_full_dataset_manifest_matches_dataset_contract():
+    dataset_path = _full_dataset_path()
+    manifest = _manifest()
+    df = pd.read_parquet(dataset_path)
+
+    assert manifest["dataset"]["sha256"] == _sha256_file(dataset_path)
     assert manifest["dataset"]["rows"] == len(df)
     assert manifest["dataset"]["columns"] == len(df.columns)
     assert manifest["dataset"]["unique_wallets"] == df["wallet_address"].nunique()
@@ -47,9 +82,10 @@ def test_data_manifest_matches_dataset_contract():
     assert manifest["model_boundary"]["feature_store_status"] == "not_available"
 
 
-def test_wallet_group_split_has_no_intersections_and_matches_manifest():
+def test_full_dataset_wallet_group_split_matches_manifest():
+    dataset_path = _full_dataset_path()
     manifest = _manifest()
-    df = remove_high_corr_features(load_and_clean_data(str(DATASET_PATH)))
+    df = remove_high_corr_features(load_and_clean_data(str(dataset_path)))
     train, validation, test = split_data(df, random_state=42, group_col="wallet_address")
 
     parts = {"train": train, "validation": validation, "test": test}
@@ -72,9 +108,10 @@ def test_wallet_group_split_has_no_intersections_and_matches_manifest():
     }
 
 
-def test_temporal_boundary_records_open_leakage_review():
+def test_full_dataset_temporal_boundary_records_open_leakage_review():
+    dataset_path = _full_dataset_path()
     manifest = _manifest()
-    df = pd.read_parquet(DATASET_PATH)
+    df = pd.read_parquet(dataset_path)
     temporal = manifest["temporal_checks"]
 
     assert temporal["prediction_time_proxy"] == "borrow_timestamp"

@@ -279,6 +279,13 @@ def generate_documents(dataset_path: Path, n_wallets: int, seed: int) -> list[Co
     return documents
 
 
+def display_dataset_path(dataset_path: Path) -> str:
+    try:
+        return str(dataset_path.relative_to(PROJECT_ROOT)).replace("\\", "/")
+    except ValueError:
+        return str(dataset_path)
+
+
 def split_paragraphs(text: str) -> list[tuple[int, str]]:
     paragraphs = []
     offset = 0
@@ -386,7 +393,7 @@ def write_corpus(
         "corpus_version": CORPUS_VERSION,
         "created_at": CREATED_AT,
         "seed": seed,
-        "dataset_path": str(dataset_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+        "dataset_path": display_dataset_path(dataset_path),
         "document_count": len(documents),
         "chunk_count": len(chunks),
         "source_kinds": sorted({document.source_kind for document in documents}),

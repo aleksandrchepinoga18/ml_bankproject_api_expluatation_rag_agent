@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from src.document_corpus import (
     CORPUS_VERSION,
     CREATED_AT,
-    DEFAULT_DATASET_PATH,
     CorpusDocument,
     chunk_document,
     sha256_text,
@@ -19,12 +19,24 @@ def _load_chunks(path):
         return [json.loads(line) for line in f if line.strip()]
 
 
-def test_demo_corpus_generation_is_deterministic(tmp_path):
+def test_demo_corpus_generation_is_deterministic(tmp_path, synthetic_dataset_path: Path):
     first = tmp_path / "first"
     second = tmp_path / "second"
 
-    manifest_a = write_corpus(output_dir=first, n_wallets=8, seed=42, rebuild=True)
-    manifest_b = write_corpus(output_dir=second, n_wallets=8, seed=42, rebuild=True)
+    manifest_a = write_corpus(
+        output_dir=first,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=8,
+        seed=42,
+        rebuild=True,
+    )
+    manifest_b = write_corpus(
+        output_dir=second,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=8,
+        seed=42,
+        rebuild=True,
+    )
 
     manifest_a_clean = {k: v for k, v in manifest_a.items() if k != "dataset_path"}
     manifest_b_clean = {k: v for k, v in manifest_b.items() if k != "dataset_path"}
@@ -34,10 +46,16 @@ def test_demo_corpus_generation_is_deterministic(tmp_path):
     ).read_text(encoding="utf-8")
 
 
-def test_document_links_match_dataset_rows(tmp_path):
+def test_document_links_match_dataset_rows(tmp_path, synthetic_dataset_path: Path):
     output = tmp_path / "corpus"
-    manifest = write_corpus(output_dir=output, n_wallets=6, seed=42, rebuild=True)
-    dataset = pd.read_parquet(DEFAULT_DATASET_PATH).reset_index(names="source_row_id")
+    manifest = write_corpus(
+        output_dir=output,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=6,
+        seed=42,
+        rebuild=True,
+    )
+    dataset = pd.read_parquet(synthetic_dataset_path).reset_index(names="source_row_id")
 
     documents = manifest["documents"]
     derived_cards = [doc for doc in documents if doc["document_type"] == "observation_card"]
@@ -54,9 +72,15 @@ def test_document_links_match_dataset_rows(tmp_path):
         assert "score" not in text.lower()
 
 
-def test_synthetic_documents_are_explicitly_marked(tmp_path):
+def test_synthetic_documents_are_explicitly_marked(tmp_path, synthetic_dataset_path: Path):
     output = tmp_path / "corpus"
-    manifest = write_corpus(output_dir=output, n_wallets=6, seed=42, rebuild=True)
+    manifest = write_corpus(
+        output_dir=output,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=6,
+        seed=42,
+        rebuild=True,
+    )
 
     synthetic_docs = [
         doc for doc in manifest["documents"] if doc["source_kind"] == "synthetic_demo"
@@ -69,9 +93,15 @@ def test_synthetic_documents_are_explicitly_marked(tmp_path):
         assert "not a real investigation" in text or "intentionally unrelated" in text
 
 
-def test_general_methodology_documents_have_no_wallet_address(tmp_path):
+def test_general_methodology_documents_have_no_wallet_address(tmp_path, synthetic_dataset_path: Path):
     output = tmp_path / "corpus"
-    manifest = write_corpus(output_dir=output, n_wallets=6, seed=42, rebuild=True)
+    manifest = write_corpus(
+        output_dir=output,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=6,
+        seed=42,
+        rebuild=True,
+    )
 
     method_docs = [doc for doc in manifest["documents"] if doc["document_type"] == "methodology"]
     assert method_docs
@@ -79,9 +109,15 @@ def test_general_methodology_documents_have_no_wallet_address(tmp_path):
     assert all(doc["source_row_ids"] == [] for doc in method_docs)
 
 
-def test_chunks_preserve_document_offsets_and_hashes(tmp_path):
+def test_chunks_preserve_document_offsets_and_hashes(tmp_path, synthetic_dataset_path: Path):
     output = tmp_path / "corpus"
-    manifest = write_corpus(output_dir=output, n_wallets=6, seed=42, rebuild=True)
+    manifest = write_corpus(
+        output_dir=output,
+        dataset_path=synthetic_dataset_path,
+        n_wallets=6,
+        seed=42,
+        rebuild=True,
+    )
     chunks = _load_chunks(output)
     document_by_id = {doc["document_id"]: doc for doc in manifest["documents"]}
 
@@ -94,7 +130,7 @@ def test_chunks_preserve_document_offsets_and_hashes(tmp_path):
         assert chunk["embedding_version"] == "not_indexed_v1"
         assert chunk["index_version"] == "not_indexed_v1"
 
-    multi_chunk_docs = {}
+    multi_chunk_docs: dict[str, list[dict[str, Any]]] = {}
     for chunk in chunks:
         multi_chunk_docs.setdefault(chunk["document_id"], []).append(chunk)
     for doc_chunks in multi_chunk_docs.values():
