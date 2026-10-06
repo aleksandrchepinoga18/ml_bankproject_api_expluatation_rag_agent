@@ -23,6 +23,6 @@ def run_eda(df: pd.DataFrame, output_dir: str = "plots"):
         cols_to_plot = numeric_cols[i:i+10]
         df[cols_to_plot].plot(kind='box', subplots=True, layout=(2, 5), figsize=(20, 8))
         plt.suptitle(f'Boxplots: Признаки {i+1} — {i+len(cols_to_plot)}')
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.tight_layout(rect=(0, 0.03, 1, 0.95))
         plt.savefig(f"{output_dir}/boxplot_{i}.png")
         plt.close()

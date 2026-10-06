@@ -1,3 +1,4 @@
 ruff==0.6.9
 mypy==1.11.2
 types-requests==2.32.0.20241016
+pytest==8.4.2
