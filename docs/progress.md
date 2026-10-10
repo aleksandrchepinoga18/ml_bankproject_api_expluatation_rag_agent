@@ -426,3 +426,49 @@ After VS Code restart / no-rebuild continuation:
   - scoring: `results/demo_agent_scoring_2026-10-10.json`, `llm.status=ok`, no fallback markers.
   - combined: `results/demo_agent_combined_after_vscode_2026-10-10.json`, `llm.status=ok`, fallback markers `llm_answer_fallback`, `llm_answer_replaced_for_scored_risk_contradiction`.
 - No scenario is missing confirmation for the latest running Docker build.
+
+## Final Daily Status On 2026-10-10
+
+Commit tracked for today's final verification:
+
+- SHA: `20bc8c33371d798c803d6801c426aabe5fa7a5a2`
+- Subject: `Add readable agent demo and consistent answer fallbacks`
+- GitHub CI: [`38066504722`](https://github.com/aleksandrchepinoga18/ml_bankproject_api_expluatation_rag_agent/actions/runs/38066504722), successful.
+
+Terminal demo:
+
+- Added and documented `scripts/demo_agent.py` for readable terminal demos against the FastAPI Agent API.
+- Demo instructions: `docs/agent_terminal_demo.md`.
+- Demo report: `docs/agent_terminal_demo_report_2026-10-10.md`.
+- Synthetic feature row: `docs/demo_features_valid.json`; explicitly demo-only, not real wallet evidence.
+- Saved terminal demo results:
+  - documents: `results/demo_agent_documents_after_vscode_2026-10-10.json`.
+  - methodology: `results/demo_agent_methodology_after_vscode_2026-10-10.json`.
+  - scoring: `results/demo_agent_scoring_2026-10-10.json`.
+  - combined: `results/demo_agent_combined_after_vscode_2026-10-10.json`.
+
+Docker/Ollama smoke:
+
+- Local Docker/Ollama smoke report: `docs/local_docker_smoke_2026-10-10.md`.
+- API URL: `http://127.0.0.1:8080`.
+- `/health/ready` stayed `ready`; model, scoring adapter, retrieval index, and corpus checks were `true`.
+- `/version` reported `llm_provider=ollama`, `ollama_model=qwen2.5:7b-instruct`, model `lightgbm_89ef90618da4df9d`, corpus `demo_corpus_v1`, and index `idx_422d98707f81`.
+- Final four-scenario Docker/Ollama summary:
+  - documents: `intent=documents`, `risk.status=not_requested`, retrieval only, 3 sources, `llm.status=ok`, `done_reason=stop`.
+  - methodology: `intent=general`, `risk.status=not_requested`, retrieval only, 2 method sources, `llm.status=ok`, `done_reason=stop`.
+  - scoring: `intent=score`, `risk.status=scored`, score `0.35894730197831315`, selected tool `scoring`, `llm.status=ok`, `done_reason=stop`.
+  - combined: `intent=combined`, `risk.status=scored`, score `0.35894730197831315`, selected tools `scoring`, `shap`, and `retrieval`, 3 sources, `llm.status=ok`, `done_reason=stop`.
+- No model, corpus, index, training, image publication, deployment, rollback, commit, or push was performed during local smoke/demo verification.
+
+Deterministic fallback replacements confirmed:
+
+- documents answer was replaced by deterministic fallback for not-requested risk: `llm_answer_fallback`, `llm_answer_replaced_for_not_requested_risk`.
+- methodology answer was replaced by deterministic fallback for methodology answer quality: `llm_answer_fallback`, `llm_answer_replaced_for_methodology_answer`.
+- scoring answer had no deterministic fallback marker in the final saved scoring result.
+- combined answer was replaced by deterministic fallback for scored-risk contradiction: `llm_answer_fallback`, `llm_answer_replaced_for_scored_risk_contradiction`.
+
+Operational status:
+
+- Server deployment: `not_run`.
+- Remote deployment: `not_run`.
+- Rollback verification: `not_run`.
