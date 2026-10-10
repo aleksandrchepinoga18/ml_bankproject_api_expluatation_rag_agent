@@ -1,0 +1,141 @@
+{
+  "conversation_id": null,
+  "answer": "Оценка риска не запрашивалась; ниже объяснена методология по найденным документам.\n- method_scoring_limits/method_scoring_limits::chunk_001: модельный score LightGBM является выходом сохраненного артефакта для строки данных; его нельзя называть калиброванной реальной вероятностью без отдельной проверки.\n- method_retrieval_rules/method_retrieval_rules::chunk_001: для вопросов по кошельку требуется точная связка wallet_address перед семантическим ранжированием; общие methodology-документы не доказывают факты о конкретном кошельке.",
+  "analysis": {
+    "request_id": "e1989fbb37454b9b8d417bb7f4105890",
+    "agent_version": "wallet_risk_agent_v1",
+    "prompt_version": "wallet_risk_agent_prompt_v1",
+    "intent": "general",
+    "wallet_address": null,
+    "data_status": "ok",
+    "risk": {
+      "status": "not_requested",
+      "nature": "model_score_not_blockchain_fact",
+      "model_version": null,
+      "schema_version": null,
+      "score": null,
+      "threshold": null,
+      "prediction": null,
+      "aggregation": null,
+      "top_features": [],
+      "rule_triggers": [],
+      "reason": null
+    },
+    "document_findings": [
+      {
+        "claim": "# Scoring interpretation limits source_kind: derived_data A model score is an output of a saved LightGBM artifact for a row-level observation. It must not be described as a calibrated real-world probability unless cal...",
+        "document_id": "method_scoring_limits",
+        "chunk_id": "method_scoring_limits::chunk_001",
+        "source_kind": "derived_data",
+        "supported": true,
+        "synthetic_demo": false
+      },
+      {
+        "claim": "# Retrieval rules for wallet documents source_kind: derived_data For an address-specific question, exact wallet_address linkage must be checked before semantic ranking. Semantic similarity alone does not prove that a...",
+        "document_id": "method_retrieval_rules",
+        "chunk_id": "method_retrieval_rules::chunk_001",
+        "source_kind": "derived_data",
+        "supported": true,
+        "synthetic_demo": false
+      }
+    ],
+    "sources": [
+      {
+        "document_id": "method_scoring_limits",
+        "chunk_id": "method_scoring_limits::chunk_001",
+        "source_kind": "derived_data",
+        "wallet_address": null,
+        "rank": 1,
+        "score": 11.174461035959844
+      },
+      {
+        "document_id": "method_retrieval_rules",
+        "chunk_id": "method_retrieval_rules::chunk_001",
+        "source_kind": "derived_data",
+        "wallet_address": null,
+        "rank": 3,
+        "score": 4.297306508574872
+      }
+    ],
+    "answer": "Оценка риска не запрашивалась; ниже объяснена методология по найденным документам.\n- method_scoring_limits/method_scoring_limits::chunk_001: модельный score LightGBM является выходом сохраненного артефакта для строки данных; его нельзя называть калиброванной реальной вероятностью без отдельной проверки.\n- method_retrieval_rules/method_retrieval_rules::chunk_001: для вопросов по кошельку требуется точная связка wallet_address перед семантическим ранжированием; общие methodology-документы не доказывают факты о конкретном кошельке.",
+    "limitations": [
+      "llm_answer_fallback",
+      "llm_answer_replaced_for_methodology_answer",
+      "tool_selection_intent_guard"
+    ],
+    "tool_statuses": [
+      {
+        "name": "retrieval",
+        "status": "ok",
+        "elapsed_ms": 4.105244999664137,
+        "error": null
+      }
+    ],
+    "llm": {
+      "provider": "ollama",
+      "model": "qwen2.5:7b-instruct",
+      "status": "ok",
+      "error": null,
+      "done_reason": "stop",
+      "eval_count": 126,
+      "prompt_eval_count": 587
+    },
+    "trace": [
+      {
+        "step": 1,
+        "node": "parse_request",
+        "action": "node",
+        "status": "ok",
+        "detail": "question=Explain the wallet risk scoring methodology and cite relevant document sources.; wallet_address=None; fallback_intent=general"
+      },
+      {
+        "step": 2,
+        "node": "llm_tool_decision",
+        "action": "llm_tool_decision",
+        "status": "ok",
+        "detail": "source=llm_tool_calling; selected=retrieval; llm_status=ok; invalid=none; intent_removed=scoring; coverage_added=none"
+      },
+      {
+        "step": 3,
+        "node": "retrieval",
+        "action": "tool_call",
+        "status": "ok",
+        "detail": "arguments={'reason': 'Retrieve wallet-linked or general methodology document chunks with source IDs'}"
+      },
+      {
+        "step": 4,
+        "node": "retrieval",
+        "action": "tool_result",
+        "status": "ok",
+        "detail": "elapsed_ms=4.105"
+      },
+      {
+        "step": 5,
+        "node": "execute_tools",
+        "action": "node",
+        "status": "ok",
+        "detail": "executed=retrieval"
+      },
+      {
+        "step": 6,
+        "node": "build_answer",
+        "action": "node",
+        "status": "ok",
+        "detail": null
+      },
+      {
+        "step": 7,
+        "node": "validate_answer",
+        "action": "node",
+        "status": "ok",
+        "detail": null
+      }
+    ],
+    "validation_errors": [],
+    "execution_mode": "langgraph",
+    "tool_selection_source": "llm_tool_calling",
+    "selected_tools": [
+      "retrieval"
+    ]
+  }
+}

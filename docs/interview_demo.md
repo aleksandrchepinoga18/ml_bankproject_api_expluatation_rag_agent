@@ -13,7 +13,23 @@ Wallet Risk Analyst is a production-like local ML/RAG service for crypto wallet 
 
 ## Demo request
 
-Use the Windows API address after the container has been recreated with the current code:
+Use the terminal demo client when the Docker API is already running:
+
+```bash
+WALLET=0x01da6f3b20d0540f24d390e28195ad7311516739
+
+python scripts/demo_agent.py \
+  --endpoint analyze \
+  --wallet-address "$WALLET" \
+  --features-file docs/demo_features_valid.json \
+  --question "Explain risk score, factors, and document sources for wallet $WALLET"
+```
+
+`docs/demo_features_valid.json` is a synthetic/demo feature row from the checked project example. It is not real wallet evidence.
+
+The FastAPI Swagger UI is available at `http://127.0.0.1:8080/docs`. No web chat UI for `/chat` exists yet; the monitoring dashboard is a metrics viewer, not a chat interface.
+
+PowerShell equivalent:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8080/analyze `

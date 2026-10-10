@@ -1,0 +1,151 @@
+{
+  "request_id": "583779fbad344d1cbc041897283427ff",
+  "agent_version": "wallet_risk_agent_v1",
+  "prompt_version": "wallet_risk_agent_prompt_v1",
+  "intent": "documents",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "data_status": "ok",
+  "risk": {
+    "status": "not_requested",
+    "nature": "model_score_not_blockchain_fact",
+    "model_version": null,
+    "schema_version": null,
+    "score": null,
+    "threshold": null,
+    "prediction": null,
+    "aggregation": null,
+    "top_features": [],
+    "rule_triggers": [],
+    "reason": null
+  },
+  "document_findings": [
+    {
+      "claim": "# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal c...",
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "supported": true,
+      "synthetic_demo": true
+    },
+    {
+      "claim": "# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    },
+    {
+      "claim": "## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    }
+  ],
+  "sources": [
+    {
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 1,
+      "score": 5.272528468633051
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 2,
+      "score": 3.0591554777944703
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 3,
+      "score": 0.0
+    }
+  ],
+  "answer": "Based on the provided JSON output, the risk assessment was not requested. Therefore, no risk status or findings can be determined at this time. The wallet address `0x01da6f3b20d0540f24d390e28195ad7311516739` has associated synthetic demo and derived data, but since the risk assessment was not requested, no specific risk status or score can be provided.\n\nThe findings from the synthetic demo and derived data are as follows:\n\n1. **Synthetic Demo Note (Document ID: synthetic_note_001, Chunk ID: synthetic_note_001::chunk_001)**\n   - This note is synthetic and used for testing retrieval behavior. It does not provide independent evidence and is fictional in nature.\n\n2. **Derived Wallet Observation (Document ID: derived_wallet_001, Chunk ID: derived_wallet_001::chunk_001)**\n   - This observation card is derived from fields present in the local dataset. It does not assert fraud and is not an independent investigation.\n\n3. **Derived Wallet Interpretation (Document ID: derived_wallet_001, Chunk ID: derived_wallet_001::chunk_002)**\n   - This card interprets the observation, noting that counts and amounts are dataset fields and not legal findings or confirmed investigations.\n\nSince the risk assessment was not requested, there is no sufficient data to assess the risk status, and therefore, no low risk, no fraud, or absence of fraud can be claimed.",
+  "limitations": [
+    "synthetic_demo_documents_are_not_independent_evidence"
+  ],
+  "tool_statuses": [
+    {
+      "name": "retrieval",
+      "status": "ok",
+      "elapsed_ms": 1.9155710006089066,
+      "error": null
+    }
+  ],
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "status": "ok",
+    "error": null,
+    "done_reason": "stop",
+    "eval_count": 332,
+    "prompt_eval_count": 921
+  },
+  "trace": [
+    {
+      "step": 1,
+      "node": "parse_request",
+      "action": "node",
+      "status": "ok",
+      "detail": "question=Show document sources for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=documents"
+    },
+    {
+      "step": 2,
+      "node": "llm_tool_decision",
+      "action": "llm_tool_decision",
+      "status": "ok",
+      "detail": "source=llm_tool_calling; selected=retrieval; llm_status=ok; invalid=none; intent_removed=none; coverage_added=none"
+    },
+    {
+      "step": 3,
+      "node": "retrieval",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments={'reason': 'Show document sources for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739', 'wallet_address': '0x01da6f3b20d0540f24d390e28195ad7311516739', 'top_k': 3}"
+    },
+    {
+      "step": 4,
+      "node": "retrieval",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=1.916"
+    },
+    {
+      "step": 5,
+      "node": "execute_tools",
+      "action": "node",
+      "status": "ok",
+      "detail": "executed=retrieval"
+    },
+    {
+      "step": 6,
+      "node": "build_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    },
+    {
+      "step": 7,
+      "node": "validate_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    }
+  ],
+  "validation_errors": [],
+  "execution_mode": "langgraph",
+  "tool_selection_source": "llm_tool_calling",
+  "selected_tools": [
+    "retrieval"
+  ]
+}

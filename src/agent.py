@@ -981,7 +981,7 @@ class WalletRiskAgent:
             if not self._is_truncated_llm_answer(llm_status, llm_text):
                 replacement_reason = self._answer_replacement_reason(state, llm_text)
                 if replacement_reason:
-                    state["limitations"].append(replacement_reason)
+                    self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
                 state["answer"] = llm_text.strip()
@@ -996,7 +996,7 @@ class WalletRiskAgent:
             if retry_text and retry_status.status == "ok" and not self._is_truncated_llm_answer(retry_status, retry_text):
                 replacement_reason = self._answer_replacement_reason(state, retry_text)
                 if replacement_reason:
-                    state["limitations"].append(replacement_reason)
+                    self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
                 state["answer"] = retry_text.strip()
@@ -1004,7 +1004,10 @@ class WalletRiskAgent:
 
             state["llm_answer_was_truncated"] = True
             state["llm_fallback_reason"] = "truncated"
-            state["limitations"].append("llm_answer_fallback_after_truncation")
+            self._mark_answer_fallback(state, "llm_answer_fallback_after_truncation")
+        elif llm_status.status in {"unavailable", "error"}:
+            state["llm_fallback_reason"] = llm_status.status
+            self._mark_answer_fallback(state, f"llm_answer_fallback_after_{llm_status.status}")
         state["answer"] = self._deterministic_answer(state)
         if state.get("llm_fallback_reason") == "truncated":
             state["answer"] = (
@@ -1012,11 +1015,22 @@ class WalletRiskAgent:
                 "returning structured tool output instead."
             )
 
+    def _mark_answer_fallback(self, state: dict[str, Any], reason: str):
+        if reason not in state["limitations"]:
+            state["limitations"].append(reason)
+        marker = "llm_answer_fallback"
+        if marker not in state["limitations"]:
+            state["limitations"].append(marker)
+
     def _answer_replacement_reason(self, state: dict[str, Any], text: str) -> str | None:
+        if self._violates_methodology_answer(state, text):
+            return "llm_answer_replaced_for_methodology_answer"
         if self._violates_insufficient_data_boundary(state, text):
             return "llm_answer_replaced_for_insufficient_data"
         if self._violates_not_requested_boundary(state, text):
             return "llm_answer_replaced_for_not_requested_risk"
+        if self._violates_scored_boundary(state, text):
+            return "llm_answer_replaced_for_scored_risk_contradiction"
         return None
 
     def _generate_answer(self, prompt: str, *, num_predict: int | None = None) -> tuple[LLMStatus, str | None]:
@@ -1067,16 +1081,68 @@ class WalletRiskAgent:
         lowered = text.lower()
         phrases = [
             "not enough data",
+            "no sufficient data",
             "insufficient data",
             "not enough information",
             "cannot assess risk",
             "can't assess risk",
+            "cannot determine risk",
+            "can't determine risk",
+            "cannot determine the risk",
+            "no risk status",
+            "risk status cannot be determined",
+            "no risk status or findings can be determined",
             "no risk assessment can be made",
             "unable to assess risk",
             "missing data",
             "missing features",
             "данных недостаточно",
             "недостаточно данных",
+        ]
+        return any(phrase in lowered for phrase in phrases)
+
+    def _violates_methodology_answer(self, state: dict[str, Any], text: str) -> bool:
+        if state.get("intent") != "general":
+            return False
+        method_sources = [
+            source for source in state.get("sources", []) if str(source.document_id).startswith("method_")
+        ]
+        if not method_sources:
+            return False
+        lowered = text.lower()
+        mentions_method_ref = any(
+            source.document_id.lower() in lowered or source.chunk_id.lower() in lowered
+            for source in method_sources
+        )
+        methodology_terms = [
+            "lightgbm",
+            "model score",
+            "calibrated",
+            "wallet_address",
+            "semantic",
+            "retrieval",
+            "feature_names",
+            "методолог",
+            "модель",
+            "признак",
+        ]
+        mentions_method_content = any(term in lowered for term in methodology_terms)
+        return not (mentions_method_ref and mentions_method_content)
+
+    def _violates_scored_boundary(self, state: dict[str, Any], text: str) -> bool:
+        risk: RiskBlock = state.get("risk", RiskBlock(status="not_requested"))
+        if risk.status != "scored":
+            return False
+        lowered = text.lower()
+        phrases = [
+            "insufficient data to assess risk",
+            "insufficient data to assess the risk",
+            "not enough data to assess risk",
+            "not enough data to assess the risk",
+            "risk status: insufficient data",
+            "risk status is insufficient data",
+            "cannot assess risk",
+            "can't assess risk",
         ]
         return any(phrase in lowered for phrase in phrases)
 
@@ -1098,8 +1164,16 @@ class WalletRiskAgent:
                 "Я не подтверждаю мошенничество как факт и не принимаю кредитные решения."
             )
 
-        parts = []
+        if state["intent"] == "general":
+            methodology_answer = self._deterministic_methodology_answer(state)
+            if methodology_answer:
+                return methodology_answer
+
         risk: RiskBlock = state["risk"]
+        if risk.status == "scored":
+            return self._deterministic_scored_answer(state)
+
+        parts = []
         if risk.status == "scored":
             parts.append(
                 "Оценка риска рассчитана моделью: "
@@ -1138,6 +1212,110 @@ class WalletRiskAgent:
         if getattr(llm_status, "status", None) in {"unavailable", "error"}:
             parts.append("LLM недоступна, поэтому возвращен структурированный результат инструментов.")
         return " ".join(parts)
+
+    def _deterministic_methodology_answer(self, state: dict[str, Any]) -> str | None:
+        risk: RiskBlock = state["risk"]
+        if risk.status != "not_requested":
+            return None
+
+        findings = state.get("document_findings", [])
+        if not findings:
+            return (
+                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
+                "\u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u043b\u0430\u0441\u044c. "
+                "\u041c\u0435\u0442\u043e\u0434\u043e\u043b\u043e\u0433\u0438\u0447\u0435\u0441\u043a\u0438\u0435 "
+                "\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043d\u044b\u0435 "
+                "\u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b \u043d\u0435 "
+                "\u043d\u0430\u0439\u0434\u0435\u043d\u044b."
+            )
+
+        lines = [
+            (
+                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
+                "\u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u043b\u0430\u0441\u044c; "
+                "\u043d\u0438\u0436\u0435 \u043e\u0431\u044a\u044f\u0441\u043d\u0435\u043d\u0430 "
+                "\u043c\u0435\u0442\u043e\u0434\u043e\u043b\u043e\u0433\u0438\u044f "
+                "\u043f\u043e \u043d\u0430\u0439\u0434\u0435\u043d\u043d\u044b\u043c "
+                "\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430\u043c."
+            )
+        ]
+        for finding in findings:
+            ref = f"{finding.document_id}/{finding.chunk_id}"
+            if finding.document_id == "method_scoring_limits":
+                summary = (
+                    "\u043c\u043e\u0434\u0435\u043b\u044c\u043d\u044b\u0439 score LightGBM "
+                    "\u044f\u0432\u043b\u044f\u0435\u0442\u0441\u044f \u0432\u044b\u0445\u043e\u0434\u043e\u043c "
+                    "\u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e "
+                    "\u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442\u0430 \u0434\u043b\u044f "
+                    "\u0441\u0442\u0440\u043e\u043a\u0438 \u0434\u0430\u043d\u043d\u044b\u0445; "
+                    "\u0435\u0433\u043e \u043d\u0435\u043b\u044c\u0437\u044f \u043d\u0430\u0437\u044b\u0432\u0430\u0442\u044c "
+                    "\u043a\u0430\u043b\u0438\u0431\u0440\u043e\u0432\u0430\u043d\u043d\u043e\u0439 "
+                    "\u0440\u0435\u0430\u043b\u044c\u043d\u043e\u0439 \u0432\u0435\u0440\u043e\u044f\u0442\u043d\u043e\u0441\u0442\u044c\u044e "
+                    "\u0431\u0435\u0437 \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u043e\u0439 "
+                    "\u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438."
+                )
+            elif finding.document_id == "method_retrieval_rules":
+                summary = (
+                    "\u0434\u043b\u044f \u0432\u043e\u043f\u0440\u043e\u0441\u043e\u0432 \u043f\u043e "
+                    "\u043a\u043e\u0448\u0435\u043b\u044c\u043a\u0443 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f "
+                    "\u0442\u043e\u0447\u043d\u0430\u044f \u0441\u0432\u044f\u0437\u043a\u0430 wallet_address "
+                    "\u043f\u0435\u0440\u0435\u0434 \u0441\u0435\u043c\u0430\u043d\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u043c "
+                    "\u0440\u0430\u043d\u0436\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u043c; "
+                    "\u043e\u0431\u0449\u0438\u0435 methodology-\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b "
+                    "\u043d\u0435 \u0434\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u044e\u0442 "
+                    "\u0444\u0430\u043a\u0442\u044b \u043e \u043a\u043e\u043d\u043a\u0440\u0435\u0442\u043d\u043e\u043c "
+                    "\u043a\u043e\u0448\u0435\u043b\u044c\u043a\u0435."
+                )
+            elif finding.document_id == "method_feature_dictionary":
+                summary = (
+                    "\u043f\u0440\u0438\u0437\u043d\u0430\u043a\u0438 \u0434\u043e\u043b\u0436\u043d\u044b "
+                    "\u043f\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0442\u044c\u0441\u044f "
+                    "\u0432 \u043f\u043e\u0440\u044f\u0434\u043a\u0435 "
+                    "\u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e "
+                    "\u0441\u043f\u0438\u0441\u043a\u0430 feature_names."
+                )
+            else:
+                summary = finding.claim
+            lines.append(f"- {ref}: {summary}")
+        return "\n".join(lines)
+
+    def _deterministic_scored_answer(self, state: dict[str, Any]) -> str:
+        risk: RiskBlock = state["risk"]
+        parts = [
+            (
+                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
+                "\u0440\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u043d\u0430 "
+                "\u043c\u043e\u0434\u0435\u043b\u044c\u044e LightGBM: "
+                f"score={risk.score:.6f}, threshold={risk.threshold:.6f}, "
+                f"prediction={risk.prediction}, model_version={risk.model_version}."
+            )
+        ]
+        if risk.top_features:
+            features = ", ".join(
+                f"{item.get('feature')}={item.get('value')} "
+                f"(impact={float(item.get('impact', 0.0)):.6f})"
+                for item in risk.top_features[:3]
+            )
+            parts.append(
+                "\u041e\u0441\u043d\u043e\u0432\u043d\u044b\u0435 "
+                f"\u043f\u0440\u0438\u0437\u043d\u0430\u043a\u0438: {features}."
+            )
+        findings = state.get("document_findings", [])
+        if findings:
+            refs = ", ".join(f"{item.document_id}/{item.chunk_id}" for item in findings)
+            parts.append(
+                "\u0421\u0432\u044f\u0437\u0430\u043d\u043d\u044b\u0435 "
+                f"\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b: {refs}."
+            )
+        parts.append(
+            "\u042d\u0442\u043e \u043c\u043e\u0434\u0435\u043b\u044c\u043d\u044b\u0439 "
+            "\u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442, \u0430 \u043d\u0435 "
+            "\u0434\u043e\u043a\u0430\u0437\u0430\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u043e "
+            "\u0444\u0440\u043e\u0434\u0430 \u0438 \u043d\u0435 "
+            "\u043a\u0440\u0435\u0434\u0438\u0442\u043d\u043e\u0435 "
+            "\u0440\u0435\u0448\u0435\u043d\u0438\u0435."
+        )
+        return "\n".join(parts)
 
     def _prompt(self, state: dict[str, Any]) -> str:
         payload = {

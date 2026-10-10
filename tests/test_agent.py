@@ -144,6 +144,66 @@ class FakeUnsafeNotRequestedProvider(FakeToolCallingProvider):
         )
 
 
+class FakeNoSufficientDataNotRequestedProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["retrieval"])
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            "No risk status or findings can be determined; there is no sufficient data to assess the risk status.",
+        )
+
+
+class FakeUnsafeMethodologyProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["retrieval", "scoring"])
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            "There is not enough information to assess risk.",
+        )
+
+
+class FakeVagueMethodologyProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["retrieval", "scoring"])
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            "Risk assessment was not requested, so no further analysis can be performed.",
+        )
+
+
+class FakeUnsafeScoredProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["scoring"])
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            "The model returned a score, but risk status: insufficient data.",
+        )
+
+
+class FakeUnavailableAnswerProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["scoring", "shap", "retrieval"])
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(
+                provider="fake",
+                model=self.model,
+                status="unavailable",
+                error="read timeout from fake ollama",
+            ),
+            None,
+        )
+
+
 class WalletCardOnlyRetriever:
     def __init__(self, wallet_address):
         self.wallet_address = wallet_address
@@ -367,6 +427,7 @@ def test_langgraph_replaces_not_requested_answer_that_claims_insufficient_data(t
     assert response.risk.status == "not_requested"
     assert response.data_status == "ok"
     assert "llm_answer_replaced_for_not_requested_risk" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
     assert "not enough data" not in response.answer.lower()
     assert "insufficient data" not in response.answer.lower()
     expected_phrase = (
@@ -376,6 +437,26 @@ def test_langgraph_replaces_not_requested_answer_that_claims_insufficient_data(t
     assert expected_phrase in response.answer
     return
     assert "РћС†РµРЅРєР° СЂРёСЃРєР° РЅРµ Р·Р°РїСЂР°С€РёРІР°Р»Р°СЃСЊ" in response.answer
+
+
+def test_not_requested_no_sufficient_data_wording_is_replaced(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeNoSufficientDataNotRequestedProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.intent == "documents"
+    assert response.risk.status == "not_requested"
+    assert "llm_answer_replaced_for_not_requested_risk" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    lowered = response.answer.lower()
+    assert "no sufficient data" not in lowered
+    assert "cannot determine" not in lowered
+    assert "not enough data" not in lowered
 
 
 def test_agent_address_without_features_returns_insufficient_data(tmp_path):
@@ -410,6 +491,25 @@ def test_langgraph_replaces_llm_low_risk_claim_when_data_is_insufficient(tmp_pat
     assert "no fraud" not in response.answer.lower()
     assert response.llm.status == "ok"
     assert "LLM " not in response.answer
+
+
+def test_scored_answer_replacement_does_not_contradict_metadata(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeUnsafeScoredProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.intent == "score"
+    assert response.risk.status == "scored"
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "insufficient data" not in response.answer.lower()
+    assert "score=0.720000" in response.answer
+    assert "LightGBM" in response.answer
 
 
 def test_methodology_explanation_with_wallet_uses_methodology_docs_without_scoring(tmp_path):
@@ -455,6 +555,50 @@ def test_methodology_with_risk_and_sources_stays_general(tmp_path):
     assert all(source.document_id.startswith("method_") for source in response.sources)
     assert "tool_selection_intent_guard" in response.limitations
     assert any("intent_removed=scoring" in (step.detail or "") for step in response.trace)
+
+
+def test_methodology_replacement_explains_method_documents(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeUnsafeMethodologyProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": (
+                "Explain the wallet risk scoring methodology and cite relevant document sources "
+                f"for {wallet_address}"
+            ),
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.intent == "general"
+    assert response.risk.status == "not_requested"
+    assert response.selected_tools == ["retrieval"]
+    assert "llm_answer_replaced_for_methodology_answer" in response.limitations
+    assert all(source.document_id.startswith("method_") for source in response.sources)
+    assert "method_scoring_limits/method_scoring_limits::chunk_001" in response.answer
+    assert "LightGBM" in response.answer
+    assert "method_retrieval_rules/method_retrieval_rules::chunk_001" in response.answer
+    assert "wallet_address" in response.answer
+
+
+def test_vague_methodology_answer_is_replaced_with_method_sources(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeVagueMethodologyProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": "Explain the wallet risk scoring methodology and cite relevant document sources.",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.intent == "general"
+    assert response.risk.status == "not_requested"
+    assert response.selected_tools == ["retrieval"]
+    assert "llm_answer_replaced_for_methodology_answer" in response.limitations
+    assert "method_scoring_limits/method_scoring_limits::chunk_001" in response.answer
+    assert "method_retrieval_rules/method_retrieval_rules::chunk_001" in response.answer
+    assert "LightGBM" in response.answer
+    assert "wallet_address" in response.answer
 
 
 def test_methodology_retrieval_does_not_substitute_wallet_cards(tmp_path):
@@ -562,9 +706,31 @@ def test_langgraph_falls_back_when_llm_answer_stays_truncated(tmp_path):
 
     assert "llm_answer_retry_after_truncation" in response.limitations
     assert "llm_answer_fallback_after_truncation" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
     assert "llm_answer_truncated" in response.validation_errors
     assert "LLM answer was truncated by generation limits" in response.answer
     assert response.answer != "3. **Document ID:** derived_wallet_001"
+
+
+def test_unavailable_llm_answer_fallback_is_marked_and_status_preserved(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeUnavailableAnswerProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score, factors, and document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.intent == "combined"
+    assert response.risk.status == "scored"
+    assert response.llm.status == "unavailable"
+    assert response.llm.error == "read timeout from fake ollama"
+    assert "llm_answer_fallback_after_unavailable" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "score=0.720000" in response.answer
+    assert response.tool_statuses
 
 
 def test_agent_max_steps_limits_tool_execution(tmp_path):

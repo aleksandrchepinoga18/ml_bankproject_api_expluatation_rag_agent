@@ -1,0 +1,228 @@
+{
+  "request_id": "8add1a768e4441199ef28750f8eee1f1",
+  "agent_version": "wallet_risk_agent_v1",
+  "prompt_version": "wallet_risk_agent_prompt_v1",
+  "intent": "combined",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "data_status": "ok",
+  "risk": {
+    "status": "scored",
+    "nature": "model_score_not_blockchain_fact",
+    "model_version": "lightgbm_89ef90618da4df9d",
+    "schema_version": "scoring_explanation_v1",
+    "score": 0.35894730197831315,
+    "threshold": 0.34438552759270996,
+    "prediction": 1,
+    "aggregation": {
+      "rule": "max_row_probability",
+      "score": 0.35894730197831315,
+      "prediction": 1,
+      "records_count": 1,
+      "representative_row_id": "input_row_0"
+    },
+    "top_features": [
+      {
+        "feature": "time_since_last_liquidated",
+        "value": 0,
+        "impact": 0.45860881252532515
+      },
+      {
+        "feature": "time_since_first_deposit",
+        "value": 0,
+        "impact": 0.25133144593223944
+      },
+      {
+        "feature": "total_available_borrows_eth",
+        "value": 0,
+        "impact": 0.1999779246509908
+      }
+    ],
+    "rule_triggers": [
+      {
+        "rule": "risky_tx_count_gt_20",
+        "feature": "risky_tx_count",
+        "value": 30.0,
+        "message": "обнаружено 30 рисковых транзакций"
+      },
+      {
+        "rule": "wallet_age_lt_7_days",
+        "feature": "wallet_age",
+        "value": 10.0,
+        "message": "кошелёк создан менее недели назад (0 дней)"
+      }
+    ],
+    "reason": null
+  },
+  "document_findings": [
+    {
+      "claim": "# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal c...",
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "supported": true,
+      "synthetic_demo": true
+    },
+    {
+      "claim": "# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    },
+    {
+      "claim": "## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    }
+  ],
+  "sources": [
+    {
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 1,
+      "score": 6.914719012889327
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 2,
+      "score": 3.0833657239496075
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 3,
+      "score": 0.043269764361607795
+    }
+  ],
+  "answer": "Оценка риска рассчитана моделью LightGBM: score=0.358947, threshold=0.344386, prediction=1, model_version=lightgbm_89ef90618da4df9d.\nОсновные признаки: time_since_last_liquidated=0 (impact=0.458609), time_since_first_deposit=0 (impact=0.251331), total_available_borrows_eth=0 (impact=0.199978).\nСвязанные документы: synthetic_note_001/synthetic_note_001::chunk_001, derived_wallet_001/derived_wallet_001::chunk_001, derived_wallet_001/derived_wallet_001::chunk_002.\nЭто модельный результат, а не доказательство фрода и не кредитное решение.",
+  "limitations": [
+    "synthetic_demo_documents_are_not_independent_evidence"
+  ],
+  "tool_statuses": [
+    {
+      "name": "scoring",
+      "status": "ok",
+      "elapsed_ms": 28.89616299944464,
+      "error": null
+    },
+    {
+      "name": "shap",
+      "status": "ok",
+      "elapsed_ms": 33.89277200039942,
+      "error": null
+    },
+    {
+      "name": "retrieval",
+      "status": "ok",
+      "elapsed_ms": 1.7265879996557487,
+      "error": null
+    }
+  ],
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "status": "unavailable",
+    "error": "HTTPConnectionPool(host='host.docker.internal', port=11434): Read timed out. (read timeout=120.0)",
+    "done_reason": null,
+    "eval_count": null,
+    "prompt_eval_count": null
+  },
+  "trace": [
+    {
+      "step": 1,
+      "node": "parse_request",
+      "action": "node",
+      "status": "ok",
+      "detail": "question=Explain risk score, factors, and document sources for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=combined"
+    },
+    {
+      "step": 2,
+      "node": "llm_tool_decision",
+      "action": "llm_tool_decision",
+      "status": "ok",
+      "detail": "source=llm_tool_calling; selected=scoring,shap,retrieval; llm_status=ok; invalid=none; intent_removed=none; coverage_added=none"
+    },
+    {
+      "step": 3,
+      "node": "scoring",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments={'reason': 'Compute the wallet risk model score for the given wallet address.'}"
+    },
+    {
+      "step": 4,
+      "node": "scoring",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=28.896"
+    },
+    {
+      "step": 5,
+      "node": "shap",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments={'reason': 'Provide SHAP-style risk factors explanation for the wallet risk score.'}"
+    },
+    {
+      "step": 6,
+      "node": "shap",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=33.893"
+    },
+    {
+      "step": 7,
+      "node": "retrieval",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments={'reason': 'Retrieve top 3 document sources for the wallet risk assessment methodology.'}"
+    },
+    {
+      "step": 8,
+      "node": "retrieval",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=1.727"
+    },
+    {
+      "step": 9,
+      "node": "execute_tools",
+      "action": "node",
+      "status": "ok",
+      "detail": "executed=scoring,shap,retrieval"
+    },
+    {
+      "step": 10,
+      "node": "build_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    },
+    {
+      "step": 11,
+      "node": "validate_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    }
+  ],
+  "validation_errors": [],
+  "execution_mode": "langgraph",
+  "tool_selection_source": "llm_tool_calling",
+  "selected_tools": [
+    "scoring",
+    "shap",
+    "retrieval"
+  ]
+}
