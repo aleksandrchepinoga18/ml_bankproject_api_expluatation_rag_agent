@@ -1,0 +1,98 @@
+{
+  "request_id": "ed34775cda5b4ad4b0f9ce7420da7b02",
+  "agent_version": "wallet_risk_agent_v1",
+  "prompt_version": "wallet_risk_agent_prompt_v1",
+  "intent": "score",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "data_status": "ok",
+  "risk": {
+    "status": "scored",
+    "nature": "model_score_not_blockchain_fact",
+    "model_version": "lightgbm_89ef90618da4df9d",
+    "schema_version": "scoring_explanation_v1",
+    "score": 0.35894730197831315,
+    "threshold": 0.34438552759270996,
+    "prediction": 1,
+    "aggregation": {
+      "rule": "max_row_probability",
+      "score": 0.35894730197831315,
+      "prediction": 1,
+      "records_count": 1,
+      "representative_row_id": "input_row_0"
+    },
+    "top_features": [],
+    "rule_triggers": [],
+    "reason": null
+  },
+  "document_findings": [],
+  "sources": [],
+  "answer": "The risk score for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739 is 0.3589. According to the model used (lightgbm_89ef90618da4df9d), the score is below the threshold of 0.3444, resulting in a status of \"scored.\" However, there is not enough data to make a definitive assessment of risk, and the score does not indicate low risk, no fraud, or absence of fraud. The score is based on the model's prediction and does not represent blockchain facts or direct observations from the wallet itself.",
+  "limitations": [],
+  "tool_statuses": [
+    {
+      "name": "scoring",
+      "status": "ok",
+      "elapsed_ms": 290.94758799999454,
+      "error": null
+    }
+  ],
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "status": "ok",
+    "error": null,
+    "done_reason": "stop",
+    "eval_count": 159,
+    "prompt_eval_count": 474
+  },
+  "trace": [
+    {
+      "step": 1,
+      "node": "parse_request",
+      "action": "node",
+      "status": "ok",
+      "detail": "question=What is the risk score for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739?; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=score"
+    },
+    {
+      "step": 2,
+      "node": "llm_tool_decision",
+      "action": "llm_tool_decision",
+      "status": "ok",
+      "detail": "source=llm_tool_calling; selected=scoring; llm_status=ok; invalid=none; intent_removed=none; dependency_removed=none; coverage_added=none"
+    },
+    {
+      "step": 3,
+      "node": "scoring",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments=validated"
+    },
+    {
+      "step": 4,
+      "node": "scoring",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=290.948"
+    },
+    {
+      "step": 5,
+      "node": "build_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    },
+    {
+      "step": 6,
+      "node": "validate_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    }
+  ],
+  "validation_errors": [],
+  "execution_mode": "langgraph",
+  "tool_selection_source": "llm_tool_calling",
+  "selected_tools": [
+    "scoring"
+  ]
+}

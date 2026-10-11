@@ -1,5 +1,7 @@
 # Agent Terminal Demo Report - 2026-10-10
 
+Update: the router-node Docker/Ollama rerun from 2026-10-12 is documented in `docs/agent_terminal_demo_report_2026-10-12.md`.
+
 Status: `passed after VS Code restart check`; all four scenarios on the latest running Docker build are now accounted for. The two previously unfinished checks were rerun sequentially with no rebuild.
 
 Scope: local terminal demonstration against the already running Docker API at `http://127.0.0.1:8080` with real Ollama metadata in responses. No model, corpus, index, training, deployment, rollback, commit, or push was performed.

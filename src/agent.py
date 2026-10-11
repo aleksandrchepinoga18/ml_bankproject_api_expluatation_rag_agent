@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import json
@@ -5,7 +7,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol, TypedDict, cast
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -19,6 +21,42 @@ AGENT_VERSION = "wallet_risk_agent_v1"
 ADDRESS_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 INTENTS = {"score", "explain", "documents", "combined", "general", "unsupported"}
 ALLOWED_TOOL_NAMES = ("scoring", "shap", "retrieval")
+TOOL_EXECUTION_ORDER = {"scoring": 0, "shap": 1, "retrieval": 2}
+
+
+class AgentState(TypedDict, total=False):
+    request: AgentRequest
+    request_id: str
+    intent: Literal["score", "explain", "documents", "combined", "general", "unsupported"]
+    wallet_address: str | None
+    data_status: Literal["ok", "insufficient_data", "invalid_address", "unsupported", "partial"]
+    risk: RiskBlock
+    sources: list[SourceRef]
+    document_findings: list[DocumentFinding]
+    document_hits: list[RetrievalHit]
+    selected_tool_calls: list[ToolCallRequest]
+    tool_queue: list[ToolCallRequest]
+    tool_index: int
+    next_route: Literal["scoring", "shap", "retrieval", "build_answer"]
+    tool_decision: ToolDecision
+    tool_selection_llm: LLMStatus
+    tool_selection_source: Literal["llm_tool_calling", "deterministic_fallback", "none"]
+    tool_statuses: list[ToolStatus]
+    called_tools: set[str]
+    trace: list[TraceStep]
+    limitations: list[str]
+    validation_errors: list[str]
+    step_count: int
+    llm: LLMStatus
+    answer: str
+    response: dict[str, Any]
+    execution_mode: Literal["builtin", "langgraph"]
+    no_tool_answer: str
+    scoring_result: Any
+    llm_answer_was_truncated: bool
+    llm_fallback_reason: str
+    _trace_detail: str
+    _trace_action: str
 
 
 class RetrieverBackend(Protocol):
@@ -521,42 +559,32 @@ class WalletRiskAgent:
 
     def run(self, request: AgentRequest | dict[str, Any]) -> AgentResponse:
         req = request if isinstance(request, AgentRequest) else AgentRequest(**request)
-        state: dict[str, Any] = {
-            "request": req,
-            "request_id": req.request_id or uuid.uuid4().hex,
-            "trace": [],
-            "step_count": 0,
-            "tool_statuses": [],
-            "called_tools": set(),
-            "risk": RiskBlock(status="not_requested"),
-            "document_findings": [],
-            "sources": [],
-            "limitations": [],
-            "validation_errors": [],
-        }
-
-        self._step(state, "parse_request", self._parse_request)
-        if state.get("intent") == "unsupported" or state.get("data_status") == "invalid_address":
-            return self._response(state)
-
-        if state["intent"] in {"score", "explain", "combined"}:
-            self._step(state, "call_scoring_tool", self._call_scoring)
-        if state["intent"] in {"explain", "combined"} and state["risk"].status == "scored":
-            self._step(state, "call_shap_tool", self._call_shap)
-        if state["intent"] in {"documents", "combined", "general"}:
-            self._step(state, "call_retrieval_tool", self._call_retrieval)
-
-        self._step(state, "build_answer", self._build_answer)
-        self._step(state, "validate_answer", self._validate_answer)
-        return self._response(state)
+        # Builtin mode intentionally shares the LangGraph ordering, dependency,
+        # and error policy. The only public difference is the execution_mode label.
+        response = self._invoke_graph(req)
+        response.execution_mode = "builtin"
+        return response
 
     def run_langgraph(self, request: AgentRequest | dict[str, Any]) -> AgentResponse:
         req = request if isinstance(request, AgentRequest) else AgentRequest(**request)
-        graph = build_langgraph_app(self)
-        state = graph.invoke({"request": req.model_dump()})
-        response = AgentResponse(**state["response"])
+        response = self._invoke_graph(req)
         response.execution_mode = "langgraph"
         return response
+
+    def _invoke_graph(self, req: AgentRequest) -> AgentResponse:
+        graph = build_langgraph_app(self)
+        state = graph.invoke(
+            {"request": req.model_dump()},
+            config={"recursion_limit": self._graph_recursion_limit()},
+        )
+        response = AgentResponse(**state["response"])
+        return response
+
+    def _graph_recursion_limit(self) -> int:
+        # parse + decision + one router pass before each possible tool and before
+        # answer + up to 3 tool nodes + answer + validate, with a small margin.
+        max_tool_nodes = len(ALLOWED_TOOL_NAMES)
+        return max(8, (2 * max_tool_nodes) + 8)
 
     def _step(self, state: dict[str, Any], node: str, func: Callable[[dict[str, Any]], None]):
         if state.get("step_count", 0) >= self.max_steps:
@@ -705,6 +733,7 @@ class WalletRiskAgent:
         valid_calls = []
         invalid_names = []
         intent_removed = []
+        dependency_removed = []
         for call in decision.tool_calls:
             if call.name not in ALLOWED_TOOL_NAMES:
                 invalid_names.append(call.name)
@@ -712,10 +741,14 @@ class WalletRiskAgent:
             if not self._tool_allowed_for_intent(state, call.name):
                 intent_removed.append(call.name)
                 continue
+            ready, _reason = self._tool_ready(state, call.name)
+            if not ready:
+                dependency_removed.append(call.name)
+                continue
             valid_calls.append(call)
 
         coverage_added = []
-        if decision.status == "ok" and valid_calls:
+        if decision.status == "ok":
             selected_calls = dedupe_tool_calls(valid_calls)
             selected_names = {call.name for call in selected_calls}
             for required_call in self._deterministic_tool_calls(state):
@@ -723,10 +756,10 @@ class WalletRiskAgent:
                     selected_calls.append(required_call)
                     selected_names.add(required_call.name)
                     coverage_added.append(required_call.name)
-            state["selected_tool_calls"] = dedupe_tool_calls(selected_calls)
+            state["selected_tool_calls"] = self._ordered_tool_calls(selected_calls)
             state["tool_selection_source"] = "llm_tool_calling"
         else:
-            state["selected_tool_calls"] = self._deterministic_tool_calls(state)
+            state["selected_tool_calls"] = self._ordered_tool_calls(self._deterministic_tool_calls(state))
             state["tool_selection_source"] = "deterministic_fallback"
             state["limitations"].append("tool_selection_fallback")
 
@@ -734,6 +767,8 @@ class WalletRiskAgent:
             state["limitations"].append("invalid_llm_tool_name")
         if intent_removed:
             state["limitations"].append("tool_selection_intent_guard")
+        if dependency_removed:
+            state["limitations"].append("tool_selection_dependency_guard")
         if coverage_added:
             state["limitations"].append("tool_selection_coverage_guard")
 
@@ -750,6 +785,7 @@ class WalletRiskAgent:
             f"source={state['tool_selection_source']}; selected={selected}; "
             f"llm_status={llm_status.status}; invalid={','.join(invalid_names) or 'none'}; "
             f"intent_removed={','.join(intent_removed) or 'none'}; "
+            f"dependency_removed={','.join(dependency_removed) or 'none'}; "
             f"coverage_added={','.join(coverage_added) or 'none'}"
         )
 
@@ -758,7 +794,7 @@ class WalletRiskAgent:
         if intent == "general":
             return tool_name == "retrieval"
         if intent == "documents":
-            return tool_name in {"scoring", "retrieval"}
+            return tool_name == "retrieval"
         if intent == "score":
             return tool_name == "scoring"
         if intent == "explain":
@@ -767,47 +803,71 @@ class WalletRiskAgent:
             return True
         return False
 
-    def _execute_selected_tools(self, state: dict[str, Any]):
-        order = {"scoring": 0, "shap": 1, "retrieval": 2}
-        calls = sorted(state.get("selected_tool_calls", []), key=lambda call: order[call.name])
-        if not calls:
-            state["_trace_detail"] = "selected=none"
+    def _tool_ready(self, state: dict[str, Any], tool_name: str) -> tuple[bool, str | None]:
+        req: AgentRequest = state["request"]
+        features = normalize_feature_rows(req.features)
+        if tool_name == "shap" and not features:
+            return False, "features_required_for_shap"
+        return True, None
+
+    def _ordered_tool_calls(self, calls: list[ToolCallRequest]) -> list[ToolCallRequest]:
+        return sorted(dedupe_tool_calls(calls), key=lambda call: TOOL_EXECUTION_ORDER[call.name])
+
+    def _mark_max_steps_reached(self, state: dict[str, Any]):
+        if "max_steps_reached" not in state["limitations"]:
+            state["limitations"].append("max_steps_reached")
+
+    def _execute_tool_node(self, state: dict[str, Any], tool_name: Literal["scoring", "shap", "retrieval"]):
+        if state.get("step_count", 0) >= self.max_steps:
+            self._mark_max_steps_reached(state)
+            self._append_trace(state, tool_name, "tool_call_blocked", "error", "max_steps_reached")
+            state["tool_index"] = state.get("tool_index", 0) + 1
             return
 
-        for call in calls:
-            if state.get("step_count", 0) >= self.max_steps:
-                state["limitations"].append("max_steps_reached")
-                self._append_trace(state, call.name, "tool_call_blocked", "error", "max_steps_reached")
-                break
-            state["step_count"] = state.get("step_count", 0) + 1
+        state["step_count"] = state.get("step_count", 0) + 1
+        validation_error = self._validate_selected_tool_arguments(state, tool_name)
+        if validation_error:
+            state["limitations"].append(f"{tool_name}_argument_error")
+            self._append_trace(state, tool_name, "tool_call", "error", validation_error)
+            state["tool_index"] = state.get("tool_index", 0) + 1
+            return
 
-            validation_error = self._validate_selected_tool_arguments(state, call.name)
-            if validation_error:
-                state["limitations"].append(f"{call.name}_argument_error")
-                self._append_trace(state, call.name, "tool_call", "error", validation_error)
-                continue
+        if tool_name == "shap" and state.get("risk", RiskBlock(status="not_requested")).status != "scored":
+            status = ToolStatus(name="shap", status="skipped", error="requires_scored_risk")
+            state["tool_statuses"].append(status)
+            state["limitations"].append("shap_skipped_requires_scored_risk")
+            self._append_trace(state, "shap", "tool_call", "skipped", status.error)
+            state["tool_index"] = state.get("tool_index", 0) + 1
+            return
 
-            self._append_trace(state, call.name, "tool_call", "ok", f"arguments={call.arguments or {}}")
-            before_status_count = len(state["tool_statuses"])
-            if call.name == "scoring":
-                self._call_scoring(state)
-            elif call.name == "shap":
-                self._call_shap(state)
-            elif call.name == "retrieval":
-                self._call_retrieval(state)
+        ready, reason = self._tool_ready(state, tool_name)
+        if not ready:
+            status = ToolStatus(name=tool_name, status="skipped", error=reason)
+            state["tool_statuses"].append(status)
+            state["limitations"].append(reason or f"{tool_name}_skipped")
+            self._append_trace(state, tool_name, "tool_call", "skipped", reason)
+            state["tool_index"] = state.get("tool_index", 0) + 1
+            return
 
-            status = state["tool_statuses"][-1] if len(state["tool_statuses"]) > before_status_count else None
-            if status is not None:
-                self._append_trace(
-                    state,
-                    call.name,
-                    "tool_result",
-                    status.status,
-                    status.error or f"elapsed_ms={status.elapsed_ms:.3f}",
-                )
+        self._append_trace(state, tool_name, "tool_call", "ok", "arguments=validated")
+        before_status_count = len(state["tool_statuses"])
+        if tool_name == "scoring":
+            self._call_scoring(state)
+        elif tool_name == "shap":
+            self._call_shap(state)
+        elif tool_name == "retrieval":
+            self._call_retrieval(state)
 
-        selected = ",".join(call.name for call in calls)
-        state["_trace_detail"] = f"executed={selected}"
+        status = state["tool_statuses"][-1] if len(state["tool_statuses"]) > before_status_count else None
+        if status is not None:
+            self._append_trace(
+                state,
+                tool_name,
+                "tool_result",
+                status.status,
+                status.error or f"elapsed_ms={status.elapsed_ms:.3f}",
+            )
+        state["tool_index"] = state.get("tool_index", 0) + 1
 
     def _validate_selected_tool_arguments(self, state: dict[str, Any], tool_name: str) -> str | None:
         req: AgentRequest = state["request"]
@@ -984,7 +1044,7 @@ class WalletRiskAgent:
                     self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
-                state["answer"] = llm_text.strip()
+                state["answer"] = self._accepted_llm_answer(state, llm_text)
                 return
 
             state["limitations"].append("llm_answer_retry_after_truncation")
@@ -999,7 +1059,7 @@ class WalletRiskAgent:
                     self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
-                state["answer"] = retry_text.strip()
+                state["answer"] = self._accepted_llm_answer(state, retry_text)
                 return
 
             state["llm_answer_was_truncated"] = True
@@ -1021,6 +1081,11 @@ class WalletRiskAgent:
         marker = "llm_answer_fallback"
         if marker not in state["limitations"]:
             state["limitations"].append(marker)
+
+    def _accepted_llm_answer(self, state: dict[str, Any], text: str) -> str:
+        if state.get("risk", RiskBlock(status="not_requested")).status == "scored":
+            return f"{self._deterministic_scored_answer(state)}\n\nLLM explanation:\n{text.strip()}"
+        return text.strip()
 
     def _answer_replacement_reason(self, state: dict[str, Any], text: str) -> str | None:
         if self._violates_methodology_answer(state, text):
@@ -1134,17 +1199,82 @@ class WalletRiskAgent:
         if risk.status != "scored":
             return False
         lowered = text.lower()
-        phrases = [
-            "insufficient data to assess risk",
-            "insufficient data to assess the risk",
-            "not enough data to assess risk",
-            "not enough data to assess the risk",
-            "risk status: insufficient data",
-            "risk status is insufficient data",
-            "cannot assess risk",
-            "can't assess risk",
+        insufficient_patterns = [
+            r"\binsufficient\s+(data|information)\b",
+            r"\bnot\s+enough\s+(data|information)\b",
+            r"\bmissing\s+(data|features)\b",
+            r"\bcannot\s+(assess|determine)\s+(the\s+)?risk\b",
+            r"\bcan't\s+(assess|determine)\s+(the\s+)?risk\b",
+            r"\bunable\s+to\s+(assess|determine)\s+(the\s+)?risk\b",
+            r"\brisk\s+status\s*(is|:)?\s*insufficient\s+data\b",
+            r"\bscore\s+is\s+unavailable\b",
         ]
-        return any(phrase in lowered for phrase in phrases)
+        if any(re.search(pattern, lowered) for pattern in insufficient_patterns):
+            return True
+
+        relation = self._score_threshold_relation(risk)
+        if relation and self._text_contradicts_score_relation(lowered, relation):
+            return True
+
+        score_value = self._extract_labeled_number(lowered, ("score", "risk score", "model score"))
+        if score_value is not None and risk.score is not None and not self._same_reported_number(score_value, risk.score):
+            return True
+
+        threshold_value = self._extract_labeled_number(lowered, ("threshold",))
+        if (
+            threshold_value is not None
+            and risk.threshold is not None
+            and not self._same_reported_number(threshold_value, risk.threshold)
+        ):
+            return True
+        return False
+
+    def _score_threshold_relation(self, risk: RiskBlock) -> str | None:
+        if risk.score is None or risk.threshold is None:
+            return None
+        if risk.score > risk.threshold:
+            return "above"
+        if risk.score < risk.threshold:
+            return "below"
+        return "equal"
+
+    def _text_contradicts_score_relation(self, lowered: str, relation: str) -> bool:
+        says_above = bool(
+            re.search(r"\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?threshold\b", lowered)
+            or re.search(r"\bthreshold\b.{0,40}\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?score\b", lowered)
+        )
+        says_below = bool(
+            re.search(r"\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?threshold\b", lowered)
+            or re.search(r"\bthreshold\b.{0,40}\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?score\b", lowered)
+        )
+        says_equal = bool(
+            re.search(r"\b(equal\s+to|equals?|at|matches?)\s+(the\s+)?threshold\b", lowered)
+            or re.search(r"\bscore\b.{0,40}\b(equal\s+to|equals?|matches?)\b.{0,40}\bthreshold\b", lowered)
+        )
+        if relation == "above":
+            return says_below or says_equal
+        if relation == "below":
+            return says_above or says_equal
+        return says_above or says_below
+
+    def _extract_labeled_number(self, lowered: str, labels: tuple[str, ...]) -> float | None:
+        number_pattern = r"([0-9]+(?:\.[0-9]+)?)"
+        for label in sorted(labels, key=len, reverse=True):
+            escaped = re.escape(label)
+            patterns = [
+                rf"\b{escaped}\b[^0-9]{{0,40}}{number_pattern}",
+                rf"{number_pattern}[^a-z0-9]{{0,20}}\b{escaped}\b",
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, lowered)
+                if match:
+                    for group in match.groups():
+                        if group is not None:
+                            return float(group)
+        return None
+
+    def _same_reported_number(self, reported: float, actual: float) -> bool:
+        return abs(reported - actual) <= 5e-4
 
     def _retry_prompt(self, state: dict[str, Any], previous_text: str) -> str:
         return (
@@ -1174,29 +1304,18 @@ class WalletRiskAgent:
             return self._deterministic_scored_answer(state)
 
         parts = []
-        if risk.status == "scored":
-            parts.append(
-                "Оценка риска рассчитана моделью: "
-                f"score={risk.score:.6f}, threshold={risk.threshold:.6f}, prediction={risk.prediction}."
-            )
-        elif risk.status == "insufficient_data":
+        if risk.status == "insufficient_data":
             parts.append(
                 f"Данных недостаточно для оценки риска кошелька: {risk.reason}. "
                 "Я не могу сделать вывод об отсутствии мошенничества или о низком риске без входных признаков модели."
             )
         elif risk.status == "not_requested":
-            parts.append("Оценка риска не запрашивалась.")
-        else:
-            parts.append("Оценка риска недоступна.")
-
-        if risk.status == "not_requested":
-            parts = ["Оценка риска не запрашивалась."]
-
-        if risk.status == "not_requested":
             parts = [
                 "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
                 "\u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u043b\u0430\u0441\u044c."
             ]
+        else:
+            parts.append("Оценка риска недоступна.")
 
         findings = state.get("document_findings", [])
         if findings:
@@ -1281,13 +1400,23 @@ class WalletRiskAgent:
 
     def _deterministic_scored_answer(self, state: dict[str, Any]) -> str:
         risk: RiskBlock = state["risk"]
+        relation = self._score_threshold_relation(risk)
+        if relation == "above":
+            relation_text = "score is above threshold"
+        elif relation == "below":
+            relation_text = "score is below threshold"
+        elif relation == "equal":
+            relation_text = "score equals threshold"
+        else:
+            relation_text = "score/threshold relation is unavailable"
         parts = [
             (
                 "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
                 "\u0440\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u043d\u0430 "
                 "\u043c\u043e\u0434\u0435\u043b\u044c\u044e LightGBM: "
                 f"score={risk.score:.6f}, threshold={risk.threshold:.6f}, "
-                f"prediction={risk.prediction}, model_version={risk.model_version}."
+                f"prediction={risk.prediction}, relation={relation_text}, "
+                f"model_version={risk.model_version}."
             )
         ]
         if risk.top_features:
@@ -1319,6 +1448,7 @@ class WalletRiskAgent:
 
     def _prompt(self, state: dict[str, Any]) -> str:
         payload = {
+            "question": state["request"].question,
             "intent": state["intent"],
             "wallet_address": state.get("wallet_address"),
             "risk": state["risk"].model_dump(),
@@ -1334,6 +1464,8 @@ class WalletRiskAgent:
             "and do not claim low risk, no fraud, or absence of fraud. "
             "If risk.status is not_requested, say risk assessment was not requested; do not say data is "
             "insufficient or missing. "
+            "If risk.status is scored, treat the structured risk.score, risk.threshold, risk.prediction, "
+            "and their above/below/equal relation as authoritative. "
             "For methodology questions, explain only the retrieved methodology documents; do not replace "
             "missing methodology documents with wallet observation cards. "
             "Do not say proven fraud, credit approved, or credit declined.\n\n"
@@ -1414,7 +1546,7 @@ def build_langgraph_app(agent: WalletRiskAgent):
     except Exception as exc:
         raise RuntimeError("langgraph_not_installed") from exc
 
-    def ensure_state(state: dict[str, Any]):
+    def ensure_state(state: AgentState) -> AgentState:
         if "request" in state and not isinstance(state["request"], AgentRequest):
             state["request"] = AgentRequest(**state["request"])
         state.setdefault("request_id", state["request"].request_id or uuid.uuid4().hex)
@@ -1427,65 +1559,114 @@ def build_langgraph_app(agent: WalletRiskAgent):
         state.setdefault("sources", [])
         state.setdefault("limitations", [])
         state.setdefault("validation_errors", [])
+        state.setdefault("selected_tool_calls", [])
+        state.setdefault("tool_queue", [])
+        state.setdefault("tool_index", 0)
+        state.setdefault("next_route", "build_answer")
         return state
 
-    def parse_node(state: dict[str, Any]):
+    def parse_node(state: AgentState) -> AgentState:
         state = ensure_state(state)
-        agent._step(state, "parse_request", agent._parse_request)
+        mutable_state = cast(dict[str, Any], state)
+        agent._step(mutable_state, "parse_request", agent._parse_request)
         return state
 
-    def decide_tools_node(state: dict[str, Any]):
-        agent._step(state, "llm_tool_decision", agent._decide_tools)
+    def decide_tools_node(state: AgentState) -> AgentState:
+        mutable_state = cast(dict[str, Any], state)
+        agent._step(mutable_state, "llm_tool_decision", agent._decide_tools)
+        state["tool_queue"] = agent._ordered_tool_calls(state.get("selected_tool_calls", []))
+        state["tool_index"] = 0
         return state
 
-    def execute_tools_node(state: dict[str, Any]):
-        agent._step(state, "execute_tools", agent._execute_selected_tools)
+    def scoring_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        agent._execute_tool_node(cast(dict[str, Any], state), "scoring")
         return state
 
-    def scoring_node(state: dict[str, Any]):
-        agent._step(state, "call_scoring_tool", agent._call_scoring)
+    def shap_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        agent._execute_tool_node(cast(dict[str, Any], state), "shap")
         return state
 
-    def shap_node(state: dict[str, Any]):
-        agent._step(state, "call_shap_tool", agent._call_shap)
+    def retrieval_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        agent._execute_tool_node(cast(dict[str, Any], state), "retrieval")
         return state
 
-    def retrieval_node(state: dict[str, Any]):
-        agent._step(state, "call_retrieval_tool", agent._call_retrieval)
+    def router_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        if state.get("step_count", 0) >= agent.max_steps:
+            state["next_route"] = "build_answer"
+            return state
+        queue = state.get("tool_queue", [])
+        index = state.get("tool_index", 0)
+        if index >= len(queue):
+            state["next_route"] = "build_answer"
+            return state
+        state["next_route"] = queue[index].name
         return state
 
-    def answer_node(state: dict[str, Any]):
-        agent._step(state, "build_answer", agent._build_answer)
+    def answer_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        mutable_state = cast(dict[str, Any], state)
+        if state.get("step_count", 0) >= agent.max_steps:
+            agent._mark_max_steps_reached(mutable_state)
+            state["llm"] = LLMStatus(provider="not_called", model="none", status="skipped")
+            state["answer"] = agent._deterministic_answer(mutable_state)
+            agent._append_trace(mutable_state, "build_answer", "safe_fallback", "ok", "max_steps_reached")
+            return state
+        agent._step(mutable_state, "build_answer", agent._build_answer)
         return state
 
-    def validate_node(state: dict[str, Any]):
-        agent._step(state, "validate_answer", agent._validate_answer)
-        state["response"] = agent._response(state).model_dump()
+    def validate_node(state: AgentState) -> AgentState:
+        state = ensure_state(state)
+        mutable_state = cast(dict[str, Any], state)
+        try:
+            agent._validate_answer(mutable_state)
+            status = "ok"
+            detail = None
+        except Exception as exc:
+            status = "error"
+            detail = str(exc)
+            state["limitations"].append("validate_answer_error")
+        agent._append_trace(mutable_state, "validate_answer", "node", status, detail)
+        state["response"] = agent._response(mutable_state).model_dump()
         return state
 
-    def route_after_parse(state: dict[str, Any]):
+    def route_after_parse(state: AgentState) -> str:
         if state.get("intent") == "unsupported" or state.get("data_status") == "invalid_address":
-            return "answer"
+            return "build_answer"
+        if state.get("step_count", 0) >= agent.max_steps:
+            return "build_answer"
         return "llm_tool_decision"
 
-    graph = StateGraph(dict)
+    def route_from_router(state: AgentState) -> str:
+        return state.get("next_route", "build_answer")
+
+    graph = StateGraph(AgentState)
     graph.add_node("parse_request", parse_node)
     graph.add_node("llm_tool_decision", decide_tools_node)
-    graph.add_node("execute_tools", execute_tools_node)
     graph.add_node("scoring", scoring_node)
     graph.add_node("shap", shap_node)
     graph.add_node("retrieval", retrieval_node)
-    graph.add_node("answer", answer_node)
+    graph.add_node("router", router_node)
+    graph.add_node("build_answer", answer_node)
     graph.add_node("validate", validate_node)
     graph.set_entry_point("parse_request")
     graph.add_conditional_edges(
         "parse_request",
         route_after_parse,
-        {"llm_tool_decision": "llm_tool_decision", "answer": "answer"},
+        {"llm_tool_decision": "llm_tool_decision", "build_answer": "build_answer"},
     )
-    graph.add_edge("llm_tool_decision", "execute_tools")
-    graph.add_edge("execute_tools", "answer")
-    graph.add_edge("answer", "validate")
+    graph.add_edge("llm_tool_decision", "router")
+    for tool_node in ALLOWED_TOOL_NAMES:
+        graph.add_edge(tool_node, "router")
+    graph.add_conditional_edges(
+        "router",
+        route_from_router,
+        {"scoring": "scoring", "shap": "shap", "retrieval": "retrieval", "build_answer": "build_answer"},
+    )
+    graph.add_edge("build_answer", "validate")
     graph.add_edge("validate", END)
     return graph.compile()
 

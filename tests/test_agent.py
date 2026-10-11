@@ -81,6 +81,46 @@ class BrokenRetriever:
         raise RuntimeError("qdrant_unavailable")
 
 
+class BrokenScoringAdapter(FakeScoringAdapter):
+    def score_rows(self, *_args, **_kwargs):
+        raise RuntimeError("scoring_unavailable")
+
+
+class FixedScoreAdapter(FakeScoringAdapter):
+    def __init__(self, *, score: float, threshold: float, prediction: int):
+        self.score = score
+        self.threshold = threshold
+        self.prediction = prediction
+
+    def score_rows(self, feature_rows=None, *, wallet_address=None, row_ids=None):
+        row_ids = row_ids or ["row-0"]
+        rows = (
+            RowScore(
+                row_id=row_ids[0],
+                wallet_address=wallet_address,
+                score=self.score,
+                prediction=self.prediction,
+                threshold=self.threshold,
+                model_version=self.model_version,
+                schema_version=self.schema_version,
+            ),
+        )
+        return ScoringResult(
+            status="scored",
+            model_version=self.model_version,
+            schema_version=self.schema_version,
+            wallet_address=wallet_address,
+            rows=rows,
+            aggregation=WalletAggregation(
+                rule="max_row_probability",
+                score=self.score,
+                prediction=self.prediction,
+                records_count=1,
+                representative_row_id=rows[0].row_id,
+            ),
+        )
+
+
 class FakeToolCallingProvider(DisabledLLMProvider):
     def __init__(self, tool_names):
         super().__init__(model="fake_tool_model")
@@ -188,6 +228,18 @@ class FakeUnsafeScoredProvider(FakeToolCallingProvider):
         )
 
 
+class FakeScoredTextProvider(FakeToolCallingProvider):
+    def __init__(self, text: str):
+        super().__init__(["scoring"])
+        self.text = text
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            self.text,
+        )
+
+
 class FakeUnavailableAnswerProvider(FakeToolCallingProvider):
     def __init__(self):
         super().__init__(["scoring", "shap", "retrieval"])
@@ -202,6 +254,21 @@ class FakeUnavailableAnswerProvider(FakeToolCallingProvider):
             ),
             None,
         )
+
+
+class CountingProvider(FakeToolCallingProvider):
+    def __init__(self, tool_names):
+        super().__init__(tool_names)
+        self.decide_calls = 0
+        self.generate_calls = 0
+
+    def decide_tools(self, **kwargs):
+        self.decide_calls += 1
+        return super().decide_tools(**kwargs)
+
+    def generate(self, prompt, num_predict=None):
+        self.generate_calls += 1
+        return LLMStatus(provider="fake", model=self.model, status="ok"), "Should not be called."
 
 
 class WalletCardOnlyRetriever:
@@ -276,6 +343,7 @@ def test_agent_combined_query_calls_needed_tools_and_returns_sources(tmp_path):
 def test_agent_langgraph_path_is_primary_runnable(tmp_path):
     agent, wallet_address = _agent(tmp_path)
     graph = build_langgraph_app(agent)
+    graph_shape = graph.get_graph()
 
     response = agent.run_langgraph(
         {
@@ -286,6 +354,7 @@ def test_agent_langgraph_path_is_primary_runnable(tmp_path):
     )
 
     assert type(graph).__name__ == "CompiledStateGraph"
+    assert {"scoring", "shap", "retrieval"}.issubset(set(graph_shape.nodes))
     assert response.execution_mode == "langgraph"
     assert response.intent == "documents"
     assert [status.name for status in response.tool_statuses] == ["retrieval"]
@@ -305,10 +374,11 @@ def test_langgraph_llm_tool_calling_is_augmented_for_missing_document_part(tmp_p
 
     assert response.intent == "documents"
     assert response.tool_selection_source == "llm_tool_calling"
-    assert response.selected_tools == ["scoring", "retrieval"]
-    assert [status.name for status in response.tool_statuses] == ["scoring", "retrieval"]
+    assert response.selected_tools == ["retrieval"]
+    assert [status.name for status in response.tool_statuses] == ["retrieval"]
+    assert response.risk.status == "not_requested"
     assert response.sources
-    assert "tool_selection_coverage_guard" in response.limitations
+    assert "tool_selection_intent_guard" in response.limitations
 
 
 def test_langgraph_llm_tool_calling_is_augmented_for_missing_score_part(tmp_path):
@@ -324,7 +394,7 @@ def test_langgraph_llm_tool_calling_is_augmented_for_missing_score_part(tmp_path
 
     assert response.intent == "combined"
     assert response.tool_selection_source == "llm_tool_calling"
-    assert response.selected_tools == ["retrieval", "scoring", "shap"]
+    assert response.selected_tools == ["scoring", "shap", "retrieval"]
     assert [status.name for status in response.tool_statuses] == ["scoring", "shap", "retrieval"]
     assert response.risk.status == "scored"
     assert response.sources
@@ -346,6 +416,51 @@ def test_langgraph_falls_back_when_llm_tool_selection_unavailable(tmp_path):
     assert response.tool_selection_source == "deterministic_fallback"
     assert response.selected_tools == ["scoring", "shap", "retrieval"]
     assert {status.name for status in response.tool_statuses} == {"scoring", "shap", "retrieval"}
+
+
+def test_langgraph_scoring_insufficient_data_skips_shap_and_keeps_retrieval(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeToolCallingProvider(["scoring", "shap", "retrieval"]),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score, factors, and document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"unknown_feature": 1},
+        }
+    )
+
+    assert response.risk.status == "insufficient_data"
+    assert [status.name for status in response.tool_statuses] == ["scoring", "shap", "retrieval"]
+    shap_status = next(status for status in response.tool_statuses if status.name == "shap")
+    assert shap_status.status == "skipped"
+    assert "shap_skipped_requires_scored_risk" in response.limitations
+    assert response.sources
+
+
+def test_langgraph_scoring_error_skips_shap_and_keeps_retrieval(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeToolCallingProvider(["scoring", "shap", "retrieval"]),
+    )
+    agent.scoring_adapter = BrokenScoringAdapter()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score, factors, and document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "error"
+    assert [status.name for status in response.tool_statuses] == ["scoring", "shap", "retrieval"]
+    assert response.tool_statuses[0].status == "error"
+    assert response.tool_statuses[1].status == "skipped"
+    assert response.tool_statuses[2].status == "ok"
+    assert response.sources
 
 
 def test_langgraph_composite_question_returns_grounded_parts(tmp_path):
@@ -510,6 +625,104 @@ def test_scored_answer_replacement_does_not_contradict_metadata(tmp_path):
     assert "insufficient data" not in response.answer.lower()
     assert "score=0.720000" in response.answer
     assert "LightGBM" in response.answer
+
+
+def test_saved_scoring_demo_contradiction_is_replaced(tmp_path):
+    saved_defect_answer = (
+        "The risk score for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739 is 0.3589. "
+        "According to the model used (lightgbm_89ef90618da4df9d), the score is below the "
+        'threshold of 0.3444, resulting in a status of "scored." However, there is not enough '
+        "data to make a definitive assessment of risk, and the score does not indicate low risk, "
+        "no fraud, or absence of fraud. The score is based on the model's prediction and does not "
+        "represent blockchain facts or direct observations from the wallet itself."
+    )
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeScoredTextProvider(saved_defect_answer))
+    agent.scoring_adapter = FixedScoreAdapter(
+        score=0.35894730197831315,
+        threshold=0.34438552759270996,
+        prediction=1,
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert response.llm.status == "ok"
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "score=0.358947" in response.answer
+    assert "threshold=0.344386" in response.answer
+    assert "relation=score is above threshold" in response.answer
+    lowered = response.answer.lower()
+    assert "below the threshold" not in lowered
+    assert "not enough data" not in lowered
+
+
+def test_scored_answer_replacement_when_above_threshold_text_says_below(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("The risk score is 0.7200 and it is below the threshold of 0.5000."),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.score == 0.72
+    assert response.risk.threshold == 0.5
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "relation=score is above threshold" in response.answer
+
+
+def test_scored_answer_replacement_when_below_threshold_text_says_above(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("The risk score is 0.2500 and it is above the threshold of 0.5000."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(score=0.25, threshold=0.5, prediction=0)
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 1, "wallet_age": 100},
+        }
+    )
+
+    assert response.risk.score == 0.25
+    assert response.risk.threshold == 0.5
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "relation=score is below threshold" in response.answer
+
+
+def test_scored_answer_replacement_when_equal_threshold_text_says_above(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("The risk score is 0.5000 and it is above the threshold of 0.5000."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(score=0.5, threshold=0.5, prediction=1)
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 1, "wallet_age": 100},
+        }
+    )
+
+    assert response.risk.score == 0.5
+    assert response.risk.threshold == 0.5
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "relation=score equals threshold" in response.answer
 
 
 def test_methodology_explanation_with_wallet_uses_methodology_docs_without_scoring(tmp_path):
@@ -746,6 +959,27 @@ def test_agent_max_steps_limits_tool_execution(tmp_path):
 
     assert "max_steps_reached" in response.limitations
     assert response.tool_statuses == []
+
+
+def test_langgraph_small_budget_does_not_call_llm_after_budget_exhaustion(tmp_path):
+    provider = CountingProvider(["scoring", "shap", "retrieval"])
+    agent, wallet_address = _agent_with_provider(tmp_path, provider)
+    agent.max_steps = 1
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score and documents for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "max_steps_reached" in response.limitations
+    assert response.tool_statuses == []
+    assert response.validation_errors == []
+    assert response.answer
+    assert provider.decide_calls == 0
+    assert provider.generate_calls == 0
 
 
 def test_agent_duplicate_tool_call_is_blocked(tmp_path):

@@ -1,0 +1,144 @@
+{
+  "request_id": "1c03c1ec6a7a4799b772e814f3ddcbd9",
+  "agent_version": "wallet_risk_agent_v1",
+  "prompt_version": "wallet_risk_agent_prompt_v1",
+  "intent": "documents",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "data_status": "ok",
+  "risk": {
+    "status": "not_requested",
+    "nature": "model_score_not_blockchain_fact",
+    "model_version": null,
+    "schema_version": null,
+    "score": null,
+    "threshold": null,
+    "prediction": null,
+    "aggregation": null,
+    "top_features": [],
+    "rule_triggers": [],
+    "reason": null
+  },
+  "document_findings": [
+    {
+      "claim": "# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal c...",
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "supported": true,
+      "synthetic_demo": true
+    },
+    {
+      "claim": "# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    },
+    {
+      "claim": "## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.",
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "supported": true,
+      "synthetic_demo": false
+    }
+  ],
+  "sources": [
+    {
+      "document_id": "synthetic_note_001",
+      "chunk_id": "synthetic_note_001::chunk_001",
+      "source_kind": "synthetic_demo",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 1,
+      "score": 5.272528468633051
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_001",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 2,
+      "score": 3.0591554777944703
+    },
+    {
+      "document_id": "derived_wallet_001",
+      "chunk_id": "derived_wallet_001::chunk_002",
+      "source_kind": "derived_data",
+      "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+      "rank": 3,
+      "score": 0.0
+    }
+  ],
+  "answer": "Based on the provided JSON output, the risk assessment was not requested for the wallet 0x01da6f3b20d0540f24d390e28195ad7311516739. The findings indicate the following:\n\n1. **Synthetic Demo Note (Document ID: synthetic_note_001, Chunk ID: synthetic_note_001::chunk_001)**:\n   - This is a synthetic demo note and is not considered independent evidence.\n   - Claim: \"# Synthetic demo analyst note synthetic_note_001 source_kind: synthetic_demo This note is fictional and exists only to test retrieval behavior. It is not a real investigation, complaint, transaction record, or legal finding.\"\n   - Rank: 1\n   - Score: 5.272528468633051\n   - Source Kind: synthetic_demo\n\n2. **Derived Observation Card (Document ID: derived_wallet_001, Chunk ID: derived_wallet_001::chunk_001)**:\n   - This card is derived from fields present in the local dataset and does not assert fraud.\n   - Claim: \"# Observation card derived_wallet_001 source_kind: derived_data This card is deterministically derived from fields present in the local dataset. It is not an independent investigation and does not assert fraud. wallet...\"\n   - Rank: 2\n   - Score: 3.0591554777944703\n   - Source Kind: derived_data\n\n3. **Derived Observation Card Interpretation (Document ID: derived_wallet_001, Chunk ID: derived_wallet_001::chunk_002)**:\n   - This provides an interpretation boundary for the observation card.\n   - Claim: \"## Interpretation boundary These values describe one row-level observation. Counts and amounts are dataset fields. They are not legal findings, complaints, or confirmed blockchain investigations.\"\n   - Rank: 3\n   - Score: 0.0\n   - Source Kind: derived_data\n\nSince the risk status is \"not_requested,\" it means that no risk assessment was performed on the wallet in question. Therefore, there is no assessment of risk, fraud, or absence of fraud available.",
+  "limitations": [
+    "synthetic_demo_documents_are_not_independent_evidence"
+  ],
+  "tool_statuses": [
+    {
+      "name": "retrieval",
+      "status": "ok",
+      "elapsed_ms": 1.7161959999896226,
+      "error": null
+    }
+  ],
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "status": "ok",
+    "error": null,
+    "done_reason": "stop",
+    "eval_count": 488,
+    "prompt_eval_count": 972
+  },
+  "trace": [
+    {
+      "step": 1,
+      "node": "parse_request",
+      "action": "node",
+      "status": "ok",
+      "detail": "question=Show document sources for wallet 0x01da6f3b20d0540f24d390e28195ad7311516739; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=documents"
+    },
+    {
+      "step": 2,
+      "node": "llm_tool_decision",
+      "action": "llm_tool_decision",
+      "status": "ok",
+      "detail": "source=llm_tool_calling; selected=retrieval; llm_status=ok; invalid=none; intent_removed=none; dependency_removed=none; coverage_added=none"
+    },
+    {
+      "step": 3,
+      "node": "retrieval",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments=validated"
+    },
+    {
+      "step": 4,
+      "node": "retrieval",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=1.716"
+    },
+    {
+      "step": 5,
+      "node": "build_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    },
+    {
+      "step": 6,
+      "node": "validate_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    }
+  ],
+  "validation_errors": [],
+  "execution_mode": "langgraph",
+  "tool_selection_source": "llm_tool_calling",
+  "selected_tools": [
+    "retrieval"
+  ]
+}
