@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-10-06.
+Last updated: 2026-10-12.
 
 ## Current Status
 
@@ -22,6 +22,37 @@ The project now has:
 Recent fix:
 
 - `/chat` with `Что ты умеешь?` now returns a clear capabilities answer without tool calls, without LLM call, and without unsupported-message text.
+
+- Agent answer consistency was tightened locally after the 2026-10-12 audit:
+  - `run()` now reports `execution_mode=langgraph` when the LangGraph path actually runs, while retaining a `builtin` fallback if LangGraph is unavailable.
+  - Methodology/not-requested answers explain retrieved `method_*` documents and do not turn an unrequested risk assessment into an insufficient-risk-data conclusion.
+  - Scored-answer validation checks all reported score/threshold/prediction mentions, English and Russian threshold-relation wording, impossible numeric comparisons, and unsupported claims that LightGBM scores are based on retrieval or synthetic notes.
+  - Rejected LLM answer text is replaced by deterministic structured output, marked with the specific `llm_answer_replaced_*` reason plus `llm_answer_fallback`, and surfaced through `validation_errors`, trace detail, and `data_status=partial` for rejected/truncated LLM text.
+  - Source validation remains a grounding/link check; it does not guarantee the truth of every generated sentence.
+  - New Docker/Ollama smoke after these local fixes: `not_run`.
+- Docker/Ollama check on the already rebuilt API was run on 2026-10-12 without another rebuild:
+  - Report: `docs/docker_real_ollama_agent_check_2026-10-12.md`.
+  - Raw JSON: `results/demo_agent_methodology_real_ollama_2026-10-12.json`, `results/demo_agent_scoring_real_ollama_2026-10-12.json`, `results/demo_agent_combined_real_ollama_2026-10-12.json`, plus health/version/metrics JSON files.
+  - `/health/ready`, `/version`, and `/metrics` were reachable; `/version` reported `llm_provider=ollama` and `ollama_model=qwen2.5:7b-instruct`.
+  - Scoring and combined responses correctly used deterministic fallback for scored-risk contradictions; fallback markers, validation errors, `data_status=partial`, and trace replacement reasons were visible.
+  - Methodology metadata/tools were correct and did not claim `insufficient_data`, but a new content issue remains: the answer says "The wallet risk scoring methodology is not requested" even though the methodology was requested.
+  - `llm.status=ok` and `validate_answer:ok` were treated only as execution/structural status, not proof of text correctness.
+- Local methodology-only fix after the Docker/Ollama check:
+  - Explicit methodology questions now skip free-form answer generation and render deterministically from retrieved `method_*` findings.
+  - The answer keeps `risk.status=not_requested` without saying methodology was not requested and without treating absent scoring as insufficient data.
+  - If no methodology documents are found, the answer says that directly.
+  - Answer-generation metadata is truthful: `llm.status=skipped`, with `llm_answer_skipped_for_explicit_methodology`; LLM tool-selection details remain in trace.
+  - Regression tests cover both found method documents and missing method documents.
+  - Local checks passed: Ruff clean; mypy clean for 51 files; full pytest `83 passed, 929 warnings`.
+  - Docker/Ollama rerun after this local fix: `not_run`.
+- Docker/Ollama methodology rerun after the operator rebuild:
+  - Report updated: `docs/docker_real_ollama_agent_check_2026-10-12.md`.
+  - Raw JSON: `results/demo_agent_methodology_after_fix_real_ollama_2026-10-12.json` and `results/docker_api_health_ready_after_methodology_fix_2026-10-12.json`.
+  - `/health/ready` returned `ready`.
+  - Explicit methodology answer now explains `method_scoring_limits/method_scoring_limits::chunk_001` and `method_retrieval_rules/method_retrieval_rules::chunk_001`.
+  - It does not say methodology was not requested and does not claim `insufficient_data`.
+  - Scoring did not run; selected tools were `retrieval` only.
+  - Answer generation was skipped truthfully with `llm.status=skipped`, marker `llm_answer_skipped_for_explicit_methodology`, tool-selection retained in trace, and `validation_errors=[]`.
 
 ## Key Files Added Or Updated
 

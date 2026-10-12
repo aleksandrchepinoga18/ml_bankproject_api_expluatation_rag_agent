@@ -368,6 +368,24 @@ def is_capability_question(question: str) -> bool:
     return any(term in q for term in capability_terms)
 
 
+def is_explicit_methodology_question(question: str) -> bool:
+    q = question.lower()
+    methodology_terms = [
+        "methodology",
+        "method",
+        "scoring methodology",
+        "feature dictionary",
+        "retrieval rules",
+        "limits",
+        "interpretation limits",
+        "методология",
+        "метод",
+        "правила",
+        "ограничения",
+    ]
+    return any(term in q for term in methodology_terms)
+
+
 def classify_intent(question: str, wallet_address: str | None) -> str:
     q = question.lower()
     if any(term in q for term in ["execute", "run code", "powershell", "cmd.exe", "drop table"]):
@@ -559,10 +577,14 @@ class WalletRiskAgent:
 
     def run(self, request: AgentRequest | dict[str, Any]) -> AgentResponse:
         req = request if isinstance(request, AgentRequest) else AgentRequest(**request)
-        # Builtin mode intentionally shares the LangGraph ordering, dependency,
-        # and error policy. The only public difference is the execution_mode label.
-        response = self._invoke_graph(req)
-        response.execution_mode = "builtin"
+        try:
+            response = self._invoke_graph(req)
+            response.execution_mode = "langgraph"
+        except RuntimeError as exc:
+            if str(exc) != "langgraph_not_installed":
+                raise
+            response = self._invoke_builtin(req)
+            response.execution_mode = "builtin"
         return response
 
     def run_langgraph(self, request: AgentRequest | dict[str, Any]) -> AgentResponse:
@@ -579,6 +601,41 @@ class WalletRiskAgent:
         )
         response = AgentResponse(**state["response"])
         return response
+
+    def _invoke_builtin(self, req: AgentRequest) -> AgentResponse:
+        state: dict[str, Any] = {
+            "request": req,
+            "request_id": req.request_id or uuid.uuid4().hex,
+            "trace": [],
+            "step_count": 0,
+            "tool_statuses": [],
+            "called_tools": set(),
+            "risk": RiskBlock(status="not_requested"),
+            "document_findings": [],
+            "sources": [],
+            "document_hits": [],
+            "limitations": ["langgraph_unavailable_builtin_fallback"],
+            "validation_errors": [],
+            "selected_tool_calls": [],
+            "tool_queue": [],
+            "tool_index": 0,
+        }
+        self._step(state, "parse_request", self._parse_request)
+        if state.get("intent") != "unsupported" and state.get("data_status") != "invalid_address":
+            self._step(state, "llm_tool_decision", self._decide_tools)
+            for call in self._ordered_tool_calls(state.get("selected_tool_calls", [])):
+                self._execute_tool_node(state, call.name)
+        self._step(state, "build_answer", self._build_answer)
+        try:
+            self._validate_answer(state)
+            validate_status = "ok"
+            validate_detail = None
+        except Exception as exc:
+            validate_status = "error"
+            validate_detail = str(exc)
+            state["limitations"].append("validate_answer_error")
+        self._append_trace(state, "validate_answer", "node", validate_status, validate_detail)
+        return self._response(state)
 
     def _graph_recursion_limit(self) -> int:
         # parse + decision + one router pass before each possible tool and before
@@ -1035,6 +1092,23 @@ class WalletRiskAgent:
             state["llm"] = LLMStatus(provider="not_called", model="none", status="skipped")
             state["answer"] = self._deterministic_answer(state)
             return
+        req: AgentRequest = state["request"]
+        if (
+            state.get("intent") == "general"
+            and state.get("risk", RiskBlock(status="not_requested")).status == "not_requested"
+            and is_explicit_methodology_question(req.question)
+        ):
+            state["llm"] = LLMStatus(
+                provider="not_called",
+                model="none",
+                status="skipped",
+                error="answer_generation_skipped_for_explicit_methodology",
+            )
+            state["limitations"].append("llm_answer_skipped_for_explicit_methodology")
+            state["answer"] = self._deterministic_methodology_answer(state) or self._deterministic_answer(state)
+            state["_trace_action"] = "deterministic_methodology_answer"
+            state["_trace_detail"] = "llm_generation_skipped_for_explicit_methodology"
+            return
         llm_status, llm_text = self._generate_answer(self._prompt(state))
         state["llm"] = llm_status
         if llm_text and llm_status.status == "ok":
@@ -1081,6 +1155,10 @@ class WalletRiskAgent:
         marker = "llm_answer_fallback"
         if marker not in state["limitations"]:
             state["limitations"].append(marker)
+        state.setdefault("validation_errors", []).append(reason)
+        if reason.startswith("llm_answer_replaced_") or reason == "llm_answer_fallback_after_truncation":
+            state["data_status"] = "partial"
+        state["_trace_detail"] = f"llm_answer_replaced:{reason}"
 
     def _accepted_llm_answer(self, state: dict[str, Any], text: str) -> str:
         if state.get("risk", RiskBlock(status="not_requested")).status == "scored":
@@ -1216,16 +1294,26 @@ class WalletRiskAgent:
         if relation and self._text_contradicts_score_relation(lowered, relation):
             return True
 
-        score_value = self._extract_labeled_number(lowered, ("score", "risk score", "model score"))
-        if score_value is not None and risk.score is not None and not self._same_reported_number(score_value, risk.score):
+        score_values = self._extract_labeled_numbers(lowered, ("risk score", "model score", "score", "скор"))
+        if risk.score is not None and any(
+            not self._same_reported_number(score_value, risk.score) for score_value in score_values
+        ):
             return True
 
-        threshold_value = self._extract_labeled_number(lowered, ("threshold",))
-        if (
-            threshold_value is not None
-            and risk.threshold is not None
-            and not self._same_reported_number(threshold_value, risk.threshold)
+        threshold_values = self._extract_labeled_numbers(lowered, ("threshold", "порог"))
+        if risk.threshold is not None and any(
+            not self._same_reported_number(threshold_value, risk.threshold) for threshold_value in threshold_values
         ):
+            return True
+
+        prediction_values = self._extract_labeled_ints(lowered, ("prediction", "predicted class", "class", "класс"))
+        if risk.prediction is not None and any(value != risk.prediction for value in prediction_values):
+            return True
+
+        if self._text_claims_model_score_from_retrieval(lowered):
+            return True
+
+        if self._text_has_bad_feature_or_rule_numbers(state, lowered):
             return True
         return False
 
@@ -1242,14 +1330,21 @@ class WalletRiskAgent:
         says_above = bool(
             re.search(r"\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bthreshold\b.{0,40}\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?score\b", lowered)
+            or re.search(r"\bscore\b.{0,40}\b(above|over|exceeds?|greater\s+than|higher\s+than)\b.{0,40}\bthreshold\b", lowered)
+            or re.search(r"\b(score|скор)\b.{0,50}\b(выше|больше|превышает)\b.{0,50}\b(порог|threshold)\b", lowered)
+            or re.search(r"\b(порог|threshold)\b.{0,50}\b(ниже|меньше)\b.{0,50}\b(score|скор)\b", lowered)
         )
         says_below = bool(
             re.search(r"\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bthreshold\b.{0,40}\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?score\b", lowered)
+            or re.search(r"\bscore\b.{0,40}\b(below|under|less\s+than|lower\s+than)\b.{0,40}\bthreshold\b", lowered)
+            or re.search(r"\b(score|скор|значение)\b.{0,50}\b(ниже|меньше)\b.{0,50}\b(порог|threshold)\b", lowered)
+            or re.search(r"\b(порог|threshold)\b.{0,50}\b(выше|больше|превышает)\b.{0,50}\b(score|скор)\b", lowered)
         )
         says_equal = bool(
             re.search(r"\b(equal\s+to|equals?|at|matches?)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bscore\b.{0,40}\b(equal\s+to|equals?|matches?)\b.{0,40}\bthreshold\b", lowered)
+            or re.search(r"\b(score|скор|значение)\b.{0,50}\b(равен|равно|совпадает)\b.{0,50}\b(порог|threshold)\b", lowered)
         )
         if relation == "above":
             return says_below or says_equal
@@ -1257,8 +1352,9 @@ class WalletRiskAgent:
             return says_above or says_equal
         return says_above or says_below
 
-    def _extract_labeled_number(self, lowered: str, labels: tuple[str, ...]) -> float | None:
+    def _extract_labeled_numbers(self, lowered: str, labels: tuple[str, ...]) -> list[float]:
         number_pattern = r"([0-9]+(?:\.[0-9]+)?)"
+        values: list[float] = []
         for label in sorted(labels, key=len, reverse=True):
             escaped = re.escape(label)
             patterns = [
@@ -1266,15 +1362,54 @@ class WalletRiskAgent:
                 rf"{number_pattern}[^a-z0-9]{{0,20}}\b{escaped}\b",
             ]
             for pattern in patterns:
-                match = re.search(pattern, lowered)
-                if match:
+                for match in re.finditer(pattern, lowered):
                     for group in match.groups():
                         if group is not None:
-                            return float(group)
-        return None
+                            values.append(float(group))
+                            break
+        return values
+
+    def _extract_labeled_ints(self, lowered: str, labels: tuple[str, ...]) -> list[int]:
+        values = self._extract_labeled_numbers(lowered, labels)
+        return [int(value) for value in values if value.is_integer()]
 
     def _same_reported_number(self, reported: float, actual: float) -> bool:
         return abs(reported - actual) <= 5e-4
+
+    def _text_claims_model_score_from_retrieval(self, lowered: str) -> bool:
+        score_terms = r"(model\s+)?(risk\s+)?score|lightgbm\s+score|скор"
+        source_terms = r"synthetic(_demo)?|synthetic note|retrieval|document|note|документ|заметк"
+        causal_terms = r"based on|derived from|calculated from|computed from|основан|рассчитан|вычислен"
+        return bool(
+            re.search(rf"({score_terms}).{{0,80}}({causal_terms}).{{0,80}}({source_terms})", lowered)
+            or re.search(rf"({source_terms}).{{0,80}}({causal_terms}).{{0,80}}({score_terms})", lowered)
+        )
+
+    def _text_has_bad_feature_or_rule_numbers(self, state: dict[str, Any], lowered: str) -> bool:
+        req: AgentRequest | None = state.get("request")
+        feature_rows = normalize_feature_rows(req.features) if isinstance(req, AgentRequest) else None
+        representative = feature_rows[0] if feature_rows else {}
+
+        risky_count = representative.get("risky_tx_count")
+        for match in re.finditer(r"\b([0-9]+)\s+(risky\s+transactions?|risky_tx_count)\b", lowered):
+            if risky_count is None or int(match.group(1)) != int(float(risky_count)):
+                return True
+
+        wallet_age_seconds = representative.get("wallet_age")
+        for match in re.finditer(r"\bwallet\s+age\b.{0,30}\b([0-9]+)\s+days?\b", lowered):
+            if wallet_age_seconds is None:
+                return True
+            actual_days = int(float(wallet_age_seconds) // 86400)
+            if int(match.group(1)) != actual_days:
+                return True
+
+        bad_day_comparison = re.search(
+            r"\b([0-9]+)\s+days?\b.{0,30}\b(less\s+than|below|under|меньше|ниже)\b.{0,30}\b([0-9]+)\s+days?\b",
+            lowered,
+        )
+        if bad_day_comparison and int(bad_day_comparison.group(1)) >= int(bad_day_comparison.group(3)):
+            return True
+        return False
 
     def _retry_prompt(self, state: dict[str, Any], previous_text: str) -> str:
         return (
@@ -1340,8 +1475,6 @@ class WalletRiskAgent:
         findings = state.get("document_findings", [])
         if not findings:
             return (
-                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
-                "\u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u043b\u0430\u0441\u044c. "
                 "\u041c\u0435\u0442\u043e\u0434\u043e\u043b\u043e\u0433\u0438\u0447\u0435\u0441\u043a\u0438\u0435 "
                 "\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043d\u044b\u0435 "
                 "\u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b \u043d\u0435 "
@@ -1350,9 +1483,7 @@ class WalletRiskAgent:
 
         lines = [
             (
-                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
-                "\u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u043b\u0430\u0441\u044c; "
-                "\u043d\u0438\u0436\u0435 \u043e\u0431\u044a\u044f\u0441\u043d\u0435\u043d\u0430 "
+                "\u041d\u0438\u0436\u0435 \u043e\u0431\u044a\u044f\u0441\u043d\u0435\u043d\u0430 "
                 "\u043c\u0435\u0442\u043e\u0434\u043e\u043b\u043e\u0433\u0438\u044f "
                 "\u043f\u043e \u043d\u0430\u0439\u0434\u0435\u043d\u043d\u044b\u043c "
                 "\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430\u043c."

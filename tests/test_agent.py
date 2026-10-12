@@ -361,6 +361,20 @@ def test_agent_langgraph_path_is_primary_runnable(tmp_path):
     assert response.trace[0].node == "parse_request"
 
 
+def test_agent_run_reports_langgraph_when_graph_executes(tmp_path):
+    agent, wallet_address = _agent(tmp_path)
+
+    response = agent.run(
+        {
+            "question": f"Show documents and sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.execution_mode == "langgraph"
+    assert response.intent == "documents"
+
+
 def test_langgraph_llm_tool_calling_is_augmented_for_missing_document_part(tmp_path):
     agent, wallet_address = _agent_with_provider(tmp_path, FakeToolCallingProvider(["scoring"]))
 
@@ -540,9 +554,15 @@ def test_langgraph_replaces_not_requested_answer_that_claims_insufficient_data(t
 
     assert response.intent == "documents"
     assert response.risk.status == "not_requested"
-    assert response.data_status == "ok"
+    assert response.data_status == "partial"
     assert "llm_answer_replaced_for_not_requested_risk" in response.limitations
     assert "llm_answer_fallback" in response.limitations
+    assert "llm_answer_replaced_for_not_requested_risk" in response.validation_errors
+    assert any(
+        step.node == "build_answer"
+        and step.detail == "llm_answer_replaced:llm_answer_replaced_for_not_requested_risk"
+        for step in response.trace
+    )
     assert "not enough data" not in response.answer.lower()
     assert "insufficient data" not in response.answer.lower()
     expected_phrase = (
@@ -566,8 +586,10 @@ def test_not_requested_no_sufficient_data_wording_is_replaced(tmp_path):
 
     assert response.intent == "documents"
     assert response.risk.status == "not_requested"
+    assert response.data_status == "partial"
     assert "llm_answer_replaced_for_not_requested_risk" in response.limitations
     assert "llm_answer_fallback" in response.limitations
+    assert "llm_answer_replaced_for_not_requested_risk" in response.validation_errors
     lowered = response.answer.lower()
     assert "no sufficient data" not in lowered
     assert "cannot determine" not in lowered
@@ -597,10 +619,11 @@ def test_langgraph_replaces_llm_low_risk_claim_when_data_is_insufficient(tmp_pat
         }
     )
 
-    assert response.data_status == "insufficient_data"
+    assert response.data_status == "partial"
     assert response.risk.status == "insufficient_data"
     assert response.risk.score is None
     assert "llm_answer_replaced_for_insufficient_data" in response.limitations
+    assert "llm_answer_replaced_for_insufficient_data" in response.validation_errors
     assert "Данных недостаточно для оценки риска кошелька" in response.answer
     assert "low risk" not in response.answer.lower()
     assert "no fraud" not in response.answer.lower()
@@ -621,7 +644,9 @@ def test_scored_answer_replacement_does_not_contradict_metadata(tmp_path):
 
     assert response.intent == "score"
     assert response.risk.status == "scored"
+    assert response.data_status == "partial"
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.validation_errors
     assert "insufficient data" not in response.answer.lower()
     assert "score=0.720000" in response.answer
     assert "LightGBM" in response.answer
@@ -655,6 +680,8 @@ def test_saved_scoring_demo_contradiction_is_replaced(tmp_path):
     assert response.llm.status == "ok"
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
     assert "llm_answer_fallback" in response.limitations
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.validation_errors
+    assert response.data_status == "partial"
     assert "score=0.358947" in response.answer
     assert "threshold=0.344386" in response.answer
     assert "relation=score is above threshold" in response.answer
@@ -681,6 +708,109 @@ def test_scored_answer_replacement_when_above_threshold_text_says_below(tmp_path
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
     assert "relation=score is above threshold" in response.answer
+
+
+def test_scored_answer_replacement_checks_all_score_mentions(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider(
+            "The risk score is 0.7200 and above threshold. Later summary: Score=0.9000."
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.score == 0.72
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "score=0.720000" in response.answer
+    assert "0.9000" not in response.answer
+
+
+def test_scored_answer_replacement_when_russian_text_says_below_threshold(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score 0.7200, threshold 0.5000; значение ниже порога."),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.score == 0.72
+    assert response.risk.threshold == 0.5
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "relation=score is above threshold" in response.answer
+
+
+def test_scored_answer_replacement_when_prediction_contradicts_structured_risk(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("The model score is 0.7200, threshold 0.5000, prediction=0."),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.prediction == 1
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "prediction=1" in response.answer
+
+
+def test_scored_answer_replacement_when_rule_arithmetic_is_impossible(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider(
+            "The model score is 0.7200, threshold 0.5000, prediction=1. "
+            "wallet age 10 days is less than 7 days."
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "wallet age 10 days" not in response.answer.lower()
+
+
+def test_scored_answer_replacement_when_model_score_is_attributed_to_synthetic_note(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider(
+            "The LightGBM score is 0.7200 and prediction=1. "
+            "The model score is based on the synthetic note retrieved for the wallet."
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "synthetic note" not in response.answer.lower()
 
 
 def test_scored_answer_replacement_when_below_threshold_text_says_above(tmp_path):
@@ -742,8 +872,22 @@ def test_methodology_explanation_with_wallet_uses_methodology_docs_without_scori
     assert response.sources
     assert all(source.wallet_address is None for source in response.sources)
     assert all(source.document_id.startswith("method_") for source in response.sources)
+    assert response.llm.status == "skipped"
+    assert response.llm.error == "answer_generation_skipped_for_explicit_methodology"
+    assert "llm_answer_skipped_for_explicit_methodology" in response.limitations
+    assert "llm_answer_replaced_for_methodology_answer" not in response.limitations
+    assert "not requested" not in response.answer.lower()
+    assert "insufficient" not in response.answer.lower()
+    assert "method_scoring_limits/method_scoring_limits::chunk_001" in response.answer
+    assert "method_retrieval_rules/method_retrieval_rules::chunk_001" in response.answer
     assert "tool_selection_intent_guard" in response.limitations
     assert any("intent_removed=scoring" in (step.detail or "") for step in response.trace)
+    assert any(
+        step.node == "build_answer"
+        and step.action == "deterministic_methodology_answer"
+        and step.detail == "llm_generation_skipped_for_explicit_methodology"
+        for step in response.trace
+    )
 
 
 def test_methodology_with_risk_and_sources_stays_general(tmp_path):
@@ -786,12 +930,17 @@ def test_methodology_replacement_explains_method_documents(tmp_path):
     assert response.intent == "general"
     assert response.risk.status == "not_requested"
     assert response.selected_tools == ["retrieval"]
-    assert "llm_answer_replaced_for_methodology_answer" in response.limitations
+    assert response.data_status == "ok"
+    assert response.llm.status == "skipped"
+    assert "llm_answer_skipped_for_explicit_methodology" in response.limitations
+    assert "llm_answer_replaced_for_methodology_answer" not in response.limitations
+    assert response.validation_errors == []
     assert all(source.document_id.startswith("method_") for source in response.sources)
     assert "method_scoring_limits/method_scoring_limits::chunk_001" in response.answer
     assert "LightGBM" in response.answer
     assert "method_retrieval_rules/method_retrieval_rules::chunk_001" in response.answer
     assert "wallet_address" in response.answer
+    assert "not requested" not in response.answer.lower()
 
 
 def test_vague_methodology_answer_is_replaced_with_method_sources(tmp_path):
@@ -807,11 +956,16 @@ def test_vague_methodology_answer_is_replaced_with_method_sources(tmp_path):
     assert response.intent == "general"
     assert response.risk.status == "not_requested"
     assert response.selected_tools == ["retrieval"]
-    assert "llm_answer_replaced_for_methodology_answer" in response.limitations
+    assert response.data_status == "ok"
+    assert response.llm.status == "skipped"
+    assert "llm_answer_skipped_for_explicit_methodology" in response.limitations
+    assert "llm_answer_replaced_for_methodology_answer" not in response.limitations
+    assert response.validation_errors == []
     assert "method_scoring_limits/method_scoring_limits::chunk_001" in response.answer
     assert "method_retrieval_rules/method_retrieval_rules::chunk_001" in response.answer
     assert "LightGBM" in response.answer
     assert "wallet_address" in response.answer
+    assert "not requested" not in response.answer.lower()
 
 
 def test_methodology_retrieval_does_not_substitute_wallet_cards(tmp_path):
@@ -830,6 +984,10 @@ def test_methodology_retrieval_does_not_substitute_wallet_cards(tmp_path):
     assert response.sources == []
     assert response.document_findings == []
     assert "no_methodology_documents_found" in response.limitations
+    assert response.llm.status == "skipped"
+    assert "llm_answer_skipped_for_explicit_methodology" in response.limitations
+    assert "insufficient" not in response.answer.lower()
+    assert "not requested" not in response.answer.lower()
     assert "Методологические документные фрагменты не найдены" in response.answer
 
 

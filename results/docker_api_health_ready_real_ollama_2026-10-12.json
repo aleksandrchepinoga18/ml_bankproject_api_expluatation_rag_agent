@@ -1,0 +1,9 @@
+﻿{
+    "status":  "ready",
+    "checks":  {
+                   "model":  true,
+                   "scoring_adapter":  true,
+                   "retrieval_index":  true,
+                   "corpus":  true
+               }
+}

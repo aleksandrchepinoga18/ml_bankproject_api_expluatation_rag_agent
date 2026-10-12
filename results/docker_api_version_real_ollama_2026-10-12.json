@@ -1,0 +1,11 @@
+﻿{
+    "status":  "ok",
+    "agent_version":  "wallet_risk_agent_v1",
+    "prompt_version":  "wallet_risk_agent_prompt_v1",
+    "model_version":  "lightgbm_89ef90618da4df9d",
+    "schema_version":  "scoring_explanation_v1",
+    "corpus_version":  "demo_corpus_v1",
+    "index_version":  "idx_422d98707f81",
+    "llm_provider":  "ollama",
+    "ollama_model":  "qwen2.5:7b-instruct"
+}
