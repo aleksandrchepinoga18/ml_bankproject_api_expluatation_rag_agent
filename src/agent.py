@@ -7,6 +7,8 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
+from pathlib import Path
+from threading import BoundedSemaphore
 from typing import Any, Callable, Literal, Protocol, TypedDict, cast
 
 import requests
@@ -370,20 +372,57 @@ def is_capability_question(question: str) -> bool:
 
 def is_explicit_methodology_question(question: str) -> bool:
     q = question.lower()
-    methodology_terms = [
+    strong_methodology_terms = [
         "methodology",
-        "method",
         "scoring methodology",
         "feature dictionary",
         "retrieval rules",
-        "limits",
         "interpretation limits",
         "методология",
-        "метод",
         "правила",
+    ]
+    if any(term in q for term in strong_methodology_terms):
+        return True
+    methodology_terms = [
+        "method",
+        "limits",
+        "метод",
         "ограничения",
     ]
-    return any(term in q for term in methodology_terms)
+    return any(term in q for term in methodology_terms) and not asks_specific_wallet_assessment(q)
+
+
+def asks_specific_wallet_assessment(q: str) -> bool:
+    wallet_terms = ["wallet", "кошел"]
+    assessment_terms = [
+        "risk score",
+        "score",
+        "risk",
+        "model result",
+        "model output",
+        "threshold",
+        "factor",
+        "shap",
+        "оцен",
+        "риск",
+        "результат модели",
+        "порог",
+        "фактор",
+    ]
+    direct_phrases = [
+        "risk score for",
+        "score for",
+        "score wallet",
+        "probability for",
+        "оценку риска",
+        "оценка риска",
+        "результат модели",
+        "сравнение с порогом",
+        "основные факторы",
+    ]
+    return any(phrase in q for phrase in direct_phrases) or (
+        any(term in q for term in wallet_terms) and any(term in q for term in assessment_terms)
+    )
 
 
 def classify_intent(question: str, wallet_address: str | None) -> str:
@@ -400,25 +439,13 @@ def classify_intent(question: str, wallet_address: str | None) -> str:
     asks_score = any(term in q for term in score_terms)
     asks_explain = any(term in q for term in explain_terms)
     asks_general = any(term in q for term in general_terms)
-    asks_wallet_assessment = any(
-        term in q
-        for term in [
-            "risk score for",
-            "score for",
-            "score wallet",
-            "calculate",
-            "compute",
-            "probability for",
-            "скор для",
-            "риск для",
-            "рассч",
-            "посч",
-            "оцени кошелек",
-            "оценить кошелек",
-        ]
+    asks_wallet_assessment = asks_specific_wallet_assessment(q) or any(
+        term in q for term in ["calculate", "compute", "скор для", "риск для", "рассч", "посч"]
     )
 
     if asks_general and not asks_wallet_assessment:
+        return "general"
+    if is_explicit_methodology_question(question):
         return "general"
     if wallet_address is None and asks_general:
         return "general"
@@ -565,7 +592,14 @@ class WalletRiskAgent:
         llm_provider=None,
         max_steps: int = 8,
         tool_timeout_seconds: float = 3.0,
+        max_pending_tool_tasks: int = 4,
     ):
+        if max_steps < 1:
+            raise ValueError("max_steps must be at least 1")
+        if tool_timeout_seconds <= 0:
+            raise ValueError("tool_timeout_seconds must be positive")
+        if max_pending_tool_tasks < 1:
+            raise ValueError("max_pending_tool_tasks must be at least 1")
         self.scoring_adapter = scoring_adapter
         self.explainer = explainer
         self.feature_names = feature_names or []
@@ -574,6 +608,9 @@ class WalletRiskAgent:
         self.llm_provider = llm_provider or OllamaProvider()
         self.max_steps = max_steps
         self.tool_timeout_seconds = tool_timeout_seconds
+        self.max_pending_tool_tasks = max_pending_tool_tasks
+        self._tool_executor = ThreadPoolExecutor(max_workers=max_pending_tool_tasks)
+        self._tool_slots = BoundedSemaphore(max_pending_tool_tasks)
 
     def run(self, request: AgentRequest | dict[str, Any]) -> AgentResponse:
         req = request if isinstance(request, AgentRequest) else AgentRequest(**request)
@@ -625,7 +662,13 @@ class WalletRiskAgent:
             self._step(state, "llm_tool_decision", self._decide_tools)
             for call in self._ordered_tool_calls(state.get("selected_tool_calls", [])):
                 self._execute_tool_node(state, call.name)
-        self._step(state, "build_answer", self._build_answer)
+        if state.get("step_count", 0) >= self.max_steps:
+            self._mark_max_steps_reached(state)
+            state["llm"] = LLMStatus(provider="not_called", model="none", status="skipped")
+            state["answer"] = self._deterministic_answer(state)
+            self._append_trace(state, "build_answer", "safe_fallback", "ok", "max_steps_reached")
+        else:
+            self._step(state, "build_answer", self._build_answer)
         try:
             self._validate_answer(state)
             validate_status = "ok"
@@ -696,10 +739,23 @@ class WalletRiskAgent:
             state["tool_statuses"].append(status)
             return ToolResult(status="duplicate_blocked", error=status.error)
         state["called_tools"].add(name)
+        if not self._tool_slots.acquire(blocking=False):
+            status = ToolStatus(name=name, status="error", error="tool_queue_saturated")
+            state["tool_statuses"].append(status)
+            state["limitations"].append(f"{name}_queue_saturated")
+            return ToolResult(status="error", error=status.error)
 
         started = time.perf_counter()
-        executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(func)
+        slot_released = False
+        future = self._tool_executor.submit(func)
+
+        def release_slot(_future):
+            nonlocal slot_released
+            if not slot_released:
+                slot_released = True
+                self._tool_slots.release()
+
+        future.add_done_callback(release_slot)
         try:
             value = future.result(timeout=self.tool_timeout_seconds)
             elapsed = (time.perf_counter() - started) * 1000
@@ -721,7 +777,8 @@ class WalletRiskAgent:
             state["limitations"].append(f"{name}_error")
             return ToolResult(status="error", error=str(exc))
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            if future.done():
+                release_slot(future)
 
     def _parse_request(self, state: dict[str, Any]):
         req: AgentRequest = state["request"]
@@ -873,6 +930,14 @@ class WalletRiskAgent:
     def _mark_max_steps_reached(self, state: dict[str, Any]):
         if "max_steps_reached" not in state["limitations"]:
             state["limitations"].append("max_steps_reached")
+        if (
+            state.get("intent") in {"score", "explain", "combined"}
+            and "scoring" not in state.get("called_tools", set())
+            and state.get("risk", RiskBlock(status="not_requested")).status == "not_requested"
+        ):
+            state["risk"] = RiskBlock(status="error", reason="scoring_not_executed_max_steps")
+            state["data_status"] = "partial"
+            state["limitations"].append("scoring_not_executed_max_steps")
 
     def _execute_tool_node(self, state: dict[str, Any], tool_name: Literal["scoring", "shap", "retrieval"]):
         if state.get("step_count", 0) >= self.max_steps:
@@ -975,7 +1040,13 @@ class WalletRiskAgent:
             state["data_status"] = "partial"
             return
 
-        scoring_result = result.value
+        try:
+            scoring_result = self._validate_scoring_result(result.value)
+        except ValueError as exc:
+            self._mark_tool_contract_error(state, "scoring", str(exc))
+            state["risk"] = RiskBlock(status="error", reason=str(exc))
+            state["data_status"] = "partial"
+            return
         if scoring_result.status == "insufficient_data":
             state["risk"] = RiskBlock(
                 status="insufficient_data",
@@ -1002,6 +1073,12 @@ class WalletRiskAgent:
     def _call_shap(self, state: dict[str, Any]):
         req: AgentRequest = state["request"]
         tool_input = SHAPToolInput(features=normalize_feature_rows(req.features), top_k=3)
+        if tool_input.features and len(tool_input.features) > 1:
+            state["tool_statuses"].append(
+                ToolStatus(name="shap", status="skipped", error="aggregated_score_shap_not_supported")
+            )
+            state["limitations"].append("shap_skipped_aggregated_score_not_supported")
+            return
 
         def call():
             if self.explainer is None or not self.feature_names:
@@ -1022,8 +1099,13 @@ class WalletRiskAgent:
 
         result = self._run_tool(state, "shap", call)
         if result.status == "ok":
-            state["risk"].top_features = result.value["top_features"]
-            state["risk"].rule_triggers = result.value["rule_triggers"]
+            try:
+                shap_result = self._validate_shap_result(result.value)
+            except ValueError as exc:
+                self._mark_tool_contract_error(state, "shap", str(exc))
+                return
+            state["risk"].top_features = shap_result["top_features"]
+            state["risk"].rule_triggers = shap_result["rule_triggers"]
         else:
             state["limitations"].append(result.error or "shap_unavailable")
 
@@ -1056,7 +1138,12 @@ class WalletRiskAgent:
             state["data_status"] = "partial"
             return
 
-        hits: list[RetrievalHit] = result.value
+        try:
+            hits = self._validate_retrieval_result(result.value)
+        except ValueError as exc:
+            self._mark_tool_contract_error(state, "retrieval", str(exc))
+            state["data_status"] = "partial"
+            return
         state["sources"] = [
             SourceRef(
                 document_id=hit.document_id,
@@ -1087,6 +1174,56 @@ class WalletRiskAgent:
         if any(hit.source_kind == "synthetic_demo" for hit in hits):
             state["limitations"].append("synthetic_demo_documents_are_not_independent_evidence")
 
+    def _mark_tool_contract_error(self, state: dict[str, Any], name: str, error: str):
+        if state.get("tool_statuses") and state["tool_statuses"][-1].name == name:
+            state["tool_statuses"][-1] = ToolStatus(name=name, status="error", error=error)
+        else:
+            state["tool_statuses"].append(ToolStatus(name=name, status="error", error=error))
+        state["limitations"].append(f"{name}_contract_error")
+
+    def _validate_scoring_result(self, value: Any) -> Any:
+        status = getattr(value, "status", None)
+        if status not in {"scored", "insufficient_data"}:
+            raise ValueError("scoring_contract_invalid_status")
+        for field in ("model_version", "schema_version"):
+            if not isinstance(getattr(value, field, None), str) or not getattr(value, field):
+                raise ValueError(f"scoring_contract_missing_{field}")
+        rows = getattr(value, "rows", None)
+        if rows is None:
+            raise ValueError("scoring_contract_missing_rows")
+        if status == "insufficient_data":
+            return value
+        aggregation = getattr(value, "aggregation", None)
+        if aggregation is None:
+            raise ValueError("scoring_contract_missing_aggregation")
+        if not rows:
+            raise ValueError("scoring_contract_missing_scored_rows")
+        for field in ("score", "threshold", "prediction"):
+            if getattr(rows[0], field, None) is None:
+                raise ValueError(f"scoring_contract_missing_row_{field}")
+        for field in ("rule", "score", "prediction", "records_count", "representative_row_id"):
+            if getattr(aggregation, field, None) is None:
+                raise ValueError(f"scoring_contract_missing_aggregation_{field}")
+        return value
+
+    def _validate_shap_result(self, value: Any) -> dict[str, list[dict[str, Any]]]:
+        if not isinstance(value, dict):
+            raise ValueError("shap_contract_not_dict")
+        top_features = value.get("top_features")
+        rule_triggers = value.get("rule_triggers")
+        if not isinstance(top_features, list) or not isinstance(rule_triggers, list):
+            raise ValueError("shap_contract_invalid_fields")
+        return {"top_features": top_features, "rule_triggers": rule_triggers}
+
+    def _validate_retrieval_result(self, value: Any) -> list[RetrievalHit]:
+        if not isinstance(value, list):
+            raise ValueError("retrieval_contract_not_list")
+        for hit in value:
+            for field in ("chunk_id", "document_id", "source_kind", "rank", "score", "text"):
+                if getattr(hit, field, None) is None:
+                    raise ValueError(f"retrieval_contract_missing_{field}")
+        return cast(list[RetrievalHit], value)
+
     def _build_answer(self, state: dict[str, Any]):
         if state.get("no_tool_answer") == "capabilities":
             state["llm"] = LLMStatus(provider="not_called", model="none", status="skipped")
@@ -1115,6 +1252,7 @@ class WalletRiskAgent:
             if not self._is_truncated_llm_answer(llm_status, llm_text):
                 replacement_reason = self._answer_replacement_reason(state, llm_text)
                 if replacement_reason:
+                    self._save_rejected_llm_diagnostic(state, replacement_reason, llm_text)
                     self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
@@ -1130,18 +1268,26 @@ class WalletRiskAgent:
             if retry_text and retry_status.status == "ok" and not self._is_truncated_llm_answer(retry_status, retry_text):
                 replacement_reason = self._answer_replacement_reason(state, retry_text)
                 if replacement_reason:
+                    self._save_rejected_llm_diagnostic(state, replacement_reason, retry_text)
                     self._mark_answer_fallback(state, replacement_reason)
                     state["answer"] = self._deterministic_answer(state)
                     return
                 state["answer"] = self._accepted_llm_answer(state, retry_text)
                 return
 
-            state["llm_answer_was_truncated"] = True
-            state["llm_fallback_reason"] = "truncated"
-            self._mark_answer_fallback(state, "llm_answer_fallback_after_truncation")
+            if retry_status.status in {"unavailable", "error"}:
+                state["llm_fallback_reason"] = retry_status.status
+                self._mark_answer_fallback(state, f"llm_answer_fallback_after_{retry_status.status}")
+            else:
+                state["llm_answer_was_truncated"] = True
+                state["llm_fallback_reason"] = "truncated"
+                self._mark_answer_fallback(state, "llm_answer_fallback_after_truncation")
         elif llm_status.status in {"unavailable", "error"}:
             state["llm_fallback_reason"] = llm_status.status
             self._mark_answer_fallback(state, f"llm_answer_fallback_after_{llm_status.status}")
+        elif llm_status.status == "ok" and not llm_text:
+            state["llm_fallback_reason"] = "empty_response"
+            self._mark_answer_fallback(state, "llm_answer_fallback_after_empty_response")
         state["answer"] = self._deterministic_answer(state)
         if state.get("llm_fallback_reason") == "truncated":
             state["answer"] = (
@@ -1150,11 +1296,12 @@ class WalletRiskAgent:
             )
 
     def _mark_answer_fallback(self, state: dict[str, Any], reason: str):
-        if reason not in state["limitations"]:
-            state["limitations"].append(reason)
+        limitations = state.setdefault("limitations", [])
+        if reason not in limitations:
+            limitations.append(reason)
         marker = "llm_answer_fallback"
-        if marker not in state["limitations"]:
-            state["limitations"].append(marker)
+        if marker not in limitations:
+            limitations.append(marker)
         state.setdefault("validation_errors", []).append(reason)
         if reason.startswith("llm_answer_replaced_") or reason == "llm_answer_fallback_after_truncation":
             state["data_status"] = "partial"
@@ -1165,6 +1312,34 @@ class WalletRiskAgent:
             return f"{self._deterministic_scored_answer(state)}\n\nLLM explanation:\n{text.strip()}"
         return text.strip()
 
+    def _save_rejected_llm_diagnostic(self, state: dict[str, Any], reason: str, rejected_text: str | None) -> None:
+        diagnostics_dir = os.getenv("AGENT_REJECTED_LLM_DIAGNOSTICS_DIR")
+        if not diagnostics_dir or not rejected_text:
+            return
+        llm = state.get("llm")
+        if isinstance(llm, LLMStatus):
+            llm_payload: dict[str, Any] = llm.model_dump()
+        else:
+            llm_payload = {}
+        payload = {
+            "agent_version": AGENT_VERSION,
+            "prompt_version": PROMPT_VERSION,
+            "request_id": state.get("request_id"),
+            "created_at_unix": time.time(),
+            "intent": state.get("intent"),
+            "replacement_reason": reason,
+            "llm": llm_payload,
+            "rejected_text": rejected_text,
+        }
+        try:
+            path = Path(diagnostics_dir)
+            path.mkdir(parents=True, exist_ok=True)
+            request_id = str(state.get("request_id") or "unknown")
+            file_path = path / f"rejected_llm_{request_id}_{uuid.uuid4().hex[:8]}.json"
+            file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            return
+
     def _answer_replacement_reason(self, state: dict[str, Any], text: str) -> str | None:
         if self._violates_methodology_answer(state, text):
             return "llm_answer_replaced_for_methodology_answer"
@@ -1174,6 +1349,8 @@ class WalletRiskAgent:
             return "llm_answer_replaced_for_not_requested_risk"
         if self._violates_scored_boundary(state, text):
             return "llm_answer_replaced_for_scored_risk_contradiction"
+        if self._violates_shap_interpretation(state, text):
+            return "llm_answer_replaced_for_shap_unit_misinterpretation"
         return None
 
     def _generate_answer(self, prompt: str, *, num_predict: int | None = None) -> tuple[LLMStatus, str | None]:
@@ -1327,7 +1504,12 @@ class WalletRiskAgent:
         return "equal"
 
     def _text_contradicts_score_relation(self, lowered: str, relation: str) -> bool:
+        russian_says_above = "\u0432\u044b\u0448\u0435 \u043f\u043e\u0440\u043e\u0433\u0430" in lowered
+        russian_says_below = "\u043d\u0438\u0436\u0435 \u043f\u043e\u0440\u043e\u0433\u0430" in lowered
+        russian_says_equal = "\u0440\u0430\u0432\u0435\u043d \u043f\u043e\u0440\u043e\u0433\u0443" in lowered or "\u0440\u0430\u0432\u043d\u043e \u043f\u043e\u0440\u043e\u0433\u0443" in lowered
         says_above = bool(
+            russian_says_above
+            or
             re.search(r"\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bthreshold\b.{0,40}\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?score\b", lowered)
             or re.search(r"\bscore\b.{0,40}\b(above|over|exceeds?|greater\s+than|higher\s+than)\b.{0,40}\bthreshold\b", lowered)
@@ -1335,6 +1517,8 @@ class WalletRiskAgent:
             or re.search(r"\b(порог|threshold)\b.{0,50}\b(ниже|меньше)\b.{0,50}\b(score|скор)\b", lowered)
         )
         says_below = bool(
+            russian_says_below
+            or
             re.search(r"\b(below|under|less\s+than|lower\s+than)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bthreshold\b.{0,40}\b(above|over|exceeds?|greater\s+than|higher\s+than)\s+(the\s+)?score\b", lowered)
             or re.search(r"\bscore\b.{0,40}\b(below|under|less\s+than|lower\s+than)\b.{0,40}\bthreshold\b", lowered)
@@ -1342,6 +1526,8 @@ class WalletRiskAgent:
             or re.search(r"\b(порог|threshold)\b.{0,50}\b(выше|больше|превышает)\b.{0,50}\b(score|скор)\b", lowered)
         )
         says_equal = bool(
+            russian_says_equal
+            or
             re.search(r"\b(equal\s+to|equals?|at|matches?)\s+(the\s+)?threshold\b", lowered)
             or re.search(r"\bscore\b.{0,40}\b(equal\s+to|equals?|matches?)\b.{0,40}\bthreshold\b", lowered)
             or re.search(r"\b(score|скор|значение)\b.{0,50}\b(равен|равно|совпадает)\b.{0,50}\b(порог|threshold)\b", lowered)
@@ -1355,18 +1541,53 @@ class WalletRiskAgent:
     def _extract_labeled_numbers(self, lowered: str, labels: tuple[str, ...]) -> list[float]:
         number_pattern = r"([0-9]+(?:\.[0-9]+)?)"
         values: list[float] = []
+        field_labels = (
+            "risk score",
+            "model score",
+            "score",
+            "\u0441\u043a\u043e\u0440",
+            "\u043e\u0446\u0435\u043d\u043a\u0430",
+            "threshold",
+            "\u043f\u043e\u0440\u043e\u0433",
+            "prediction",
+            "predicted class",
+            "class",
+            "\u043f\u0440\u0435\u0434\u0441\u043a\u0430\u0437\u0430\u043d\u0438\u0435",
+            "\u043a\u043b\u0430\u0441\u0441",
+        )
+        field_label_pattern = "|".join(re.escape(item) for item in sorted(field_labels, key=len, reverse=True))
+        seen_spans: set[tuple[str, int, int]] = set()
+        sentence_parts = re.split(r"(?<=[.!?])\s+|[\n\r;]+", lowered)
         for label in sorted(labels, key=len, reverse=True):
             escaped = re.escape(label)
-            patterns = [
-                rf"\b{escaped}\b[^0-9]{{0,40}}{number_pattern}",
-                rf"{number_pattern}[^a-z0-9]{{0,20}}\b{escaped}\b",
-            ]
-            for pattern in patterns:
-                for match in re.finditer(pattern, lowered):
-                    for group in match.groups():
-                        if group is not None:
-                            values.append(float(group))
-                            break
+            for sentence in sentence_parts:
+                for label_match in re.finditer(rf"\b{escaped}\b", sentence):
+                    after = sentence[label_match.end() :]
+                    next_label = re.search(rf"\b(?:{field_label_pattern})\b", after)
+                    if next_label is not None:
+                        after = after[: next_label.start()]
+                    next_number = re.search(rf"^[^0-9]{{0,40}}{number_pattern}", after)
+                    if next_number is not None:
+                        number_span = (
+                            sentence,
+                            label_match.end() + next_number.start(1),
+                            label_match.end() + next_number.end(1),
+                        )
+                        if number_span not in seen_spans:
+                            seen_spans.add(number_span)
+                            values.append(float(next_number.group(1)))
+                        continue
+
+                    before = sentence[: label_match.start()]
+                    previous_labels = list(re.finditer(rf"\b(?:{field_label_pattern})\b", before))
+                    if previous_labels:
+                        before = before[previous_labels[-1].end() :]
+                    previous_number = re.search(rf"{number_pattern}[^a-z0-9]{{0,20}}$", before)
+                    if previous_number is not None:
+                        number_span = (sentence, previous_number.start(1), previous_number.end(1))
+                        if number_span not in seen_spans:
+                            seen_spans.add(number_span)
+                            values.append(float(previous_number.group(1)))
         return values
 
     def _extract_labeled_ints(self, lowered: str, labels: tuple[str, ...]) -> list[int]:
@@ -1384,6 +1605,38 @@ class WalletRiskAgent:
             re.search(rf"({score_terms}).{{0,80}}({causal_terms}).{{0,80}}({source_terms})", lowered)
             or re.search(rf"({source_terms}).{{0,80}}({causal_terms}).{{0,80}}({score_terms})", lowered)
         )
+
+    def _violates_shap_interpretation(self, state: dict[str, Any], text: str) -> bool:
+        risk: RiskBlock = state.get("risk", RiskBlock(status="not_requested"))
+        if risk.status != "scored" or not risk.top_features:
+            return False
+        lowered = text.lower()
+        percentage_terms = (
+            r"(?:\d+(?:[.,]\d+)?\s*%|percent(?:age)?\s+points?|percentage\s+points?|"
+            r"процентн(?:ых|ые|ыми)?\s+пункт|в\s+процентах|как\s+процент)"
+        )
+        if not re.search(percentage_terms, lowered):
+            return False
+        shap_value_terms = (
+            r"(shap|impact|contribution|contributes?|influences?|affects?|"
+            r"вклад|влия[еюя][тл]?|повлиял|повлияли|характеристик[аи].{0,40}влия)"
+        )
+        target_terms = r"(score|risk score|model score|risk|model|оценк|риск|модел)"
+        segments = re.split(r"(?<=[.!?])\s+|[\n\r;]+", lowered)
+        shap_context = False
+        for segment in segments:
+            if not segment.strip():
+                continue
+            has_shap_context = bool(re.search(shap_value_terms, segment) and re.search(target_terms, segment))
+            if has_shap_context:
+                shap_context = True
+            elif segment.lstrip().startswith(("-", "*")) or re.match(r"\s*\d+[\.)]", segment):
+                has_shap_context = shap_context
+            else:
+                shap_context = False
+            if shap_context and re.search(percentage_terms, segment):
+                return True
+        return False
 
     def _text_has_bad_feature_or_rule_numbers(self, state: dict[str, Any], lowered: str) -> bool:
         req: AgentRequest | None = state.get("request")
@@ -1533,33 +1786,42 @@ class WalletRiskAgent:
         risk: RiskBlock = state["risk"]
         relation = self._score_threshold_relation(risk)
         if relation == "above":
-            relation_text = "score is above threshold"
+            relation_text = "выше порога"
+            class_text = "к классу повышенного риска"
         elif relation == "below":
-            relation_text = "score is below threshold"
+            relation_text = "ниже порога"
+            class_text = "к классу ниже порога риска"
         elif relation == "equal":
-            relation_text = "score equals threshold"
+            relation_text = "равен порогу"
+            class_text = "к пороговому классу риска"
         else:
-            relation_text = "score/threshold relation is unavailable"
+            relation_text = "сравнение с порогом недоступно"
+            class_text = "к рассчитанному модельному классу"
+        score_text = self._format_readable_number(risk.score)
+        threshold_text = self._format_readable_number(risk.threshold)
         parts = [
             (
-                "\u041e\u0446\u0435\u043d\u043a\u0430 \u0440\u0438\u0441\u043a\u0430 "
-                "\u0440\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u043d\u0430 "
-                "\u043c\u043e\u0434\u0435\u043b\u044c\u044e LightGBM: "
-                f"score={risk.score:.6f}, threshold={risk.threshold:.6f}, "
-                f"prediction={risk.prediction}, relation={relation_text}, "
-                f"model_version={risk.model_version}."
+                f"Оценка модели — {score_text} при пороге {threshold_text}. "
+                f"Значение {relation_text}, поэтому модель отнесла пример {class_text}."
             )
         ]
         if risk.top_features:
-            features = ", ".join(
-                f"{item.get('feature')}={item.get('value')} "
-                f"(impact={float(item.get('impact', 0.0)):.6f})"
-                for item in risk.top_features[:3]
-            )
-            parts.append(
-                "\u041e\u0441\u043d\u043e\u0432\u043d\u044b\u0435 "
-                f"\u043f\u0440\u0438\u0437\u043d\u0430\u043a\u0438: {features}."
-            )
+            feature_lines = []
+            for item in risk.top_features[:3]:
+                feature_name = str(item.get("feature"))
+                feature_label = self._verified_feature_label(feature_name)
+                label_text = feature_label or feature_name
+                impact = float(item.get("impact", 0.0))
+                direction = "повышает raw output модели для риск-класса" if impact >= 0 else "снижает raw output модели для риск-класса"
+                feature_lines.append(
+                    "- "
+                    f"{label_text}: значение {item.get('value')}, "
+                    f"SHAP-вклад {self._format_readable_number(impact, digits=6)} "
+                    f"({direction}; единицы: raw output/margin LightGBM, не проценты и не вероятность)"
+                )
+            parts.append("Основные SHAP-факторы:\n" + "\n".join(feature_lines))
+        else:
+            parts.append("Основные SHAP-факторы: не рассчитаны или отсутствуют в structured response.")
         findings = state.get("document_findings", [])
         if findings:
             refs = ", ".join(f"{item.document_id}/{item.chunk_id}" for item in findings)
@@ -1568,14 +1830,28 @@ class WalletRiskAgent:
                 f"\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b: {refs}."
             )
         parts.append(
-            "\u042d\u0442\u043e \u043c\u043e\u0434\u0435\u043b\u044c\u043d\u044b\u0439 "
-            "\u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442, \u0430 \u043d\u0435 "
-            "\u0434\u043e\u043a\u0430\u0437\u0430\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u043e "
-            "\u0444\u0440\u043e\u0434\u0430 \u0438 \u043d\u0435 "
-            "\u043a\u0440\u0435\u0434\u0438\u0442\u043d\u043e\u0435 "
-            "\u0440\u0435\u0448\u0435\u043d\u0438\u0435."
+            "Ограничения: это результат модели, а не доказательство фрода, "
+            "не калиброванная вероятность и не решение одобрить или отказать. "
+            "SHAP показывает вклад признака в raw output/margin модели, а не причинное доказательство, "
+            "процент или вероятность. "
+            "Для demo/synthetic признаков и документов вывод предназначен только для проверки пайплайна."
         )
         return "\n".join(parts)
+
+    def _format_readable_number(self, value: float | None, *, digits: int = 3) -> str:
+        if value is None:
+            return "недоступна"
+        return f"{value:.{digits}f}".replace(".", ",")
+
+    def _verified_feature_label(self, feature_name: str) -> str | None:
+        return None
+
+    def _feature_dictionary_note(self, feature_name: str) -> str | None:
+        if feature_name.endswith("_count"):
+            return "dataset count field"
+        if feature_name.endswith("_timestamp"):
+            return "Unix-like timestamp field in the source table"
+        return None
 
     def _prompt(self, state: dict[str, Any]) -> str:
         payload = {
@@ -1588,8 +1864,8 @@ class WalletRiskAgent:
             "limitations": state.get("limitations", []),
         }
         return (
-            "You are a wallet risk analyst. Tools have already been selected by deterministic "
-            "intent routing; do not call or invent tools. Use only this JSON tool output. "
+            "You are a wallet risk analyst. Tools have already been selected and validated by "
+            "the agent router; do not call or invent tools. Use only this JSON tool output. "
             "Mention document_id/chunk_id for document claims. Mark synthetic_demo as demo only. "
             "If risk.status is insufficient_data, explicitly say there is not enough data to assess risk "
             "and do not claim low risk, no fraud, or absence of fraud. "
@@ -1597,6 +1873,9 @@ class WalletRiskAgent:
             "insufficient or missing. "
             "If risk.status is scored, treat the structured risk.score, risk.threshold, risk.prediction, "
             "and their above/below/equal relation as authoritative. "
+            "If risk.top_features are present, SHAP impact values are raw LightGBM output/margin "
+            "contributions from shap.TreeExplainer(model), not percentages, probabilities, or percentage points; "
+            "do not convert or rename them unless a verified transform is provided. "
             "For methodology questions, explain only the retrieved methodology documents; do not replace "
             "missing methodology documents with wallet observation cards. "
             "Do not say proven fraud, credit approved, or credit declined.\n\n"
@@ -1604,6 +1883,71 @@ class WalletRiskAgent:
         )
 
     def _validate_answer(self, state: dict[str, Any]):
+        errors = self._structured_source_errors(state)
+        if errors:
+            state["validation_errors"].extend(errors)
+            state["data_status"] = "partial"
+        forbidden = ["proved fraud", "proven fraud", "доказано мошенничество", "credit approved", "credit declined"]
+        answer_lower = state.get("answer", "").lower()
+        for phrase in forbidden:
+            if self._contains_forbidden_final_phrase(answer_lower, phrase):
+                state["validation_errors"].append(f"forbidden_answer_phrase:{phrase}")
+                state["data_status"] = "partial"
+                errors.append(f"forbidden_answer_phrase:{phrase}")
+        source_consistency_error = self._source_consistency_error(state, answer_lower)
+        if source_consistency_error:
+            errors.append(source_consistency_error)
+            self._mark_answer_fallback(state, source_consistency_error)
+        if self._violates_shap_interpretation(state, state.get("answer", "")):
+            shap_error = "llm_answer_replaced_for_shap_unit_misinterpretation"
+            errors.append(shap_error)
+            self._mark_answer_fallback(state, shap_error)
+        if state.get("llm_answer_was_truncated"):
+            state["validation_errors"].append("llm_answer_truncated")
+
+        if errors and not state.get("_validation_fallback_applied"):
+            original_errors = list(errors)
+            self._save_rejected_llm_diagnostic(state, ",".join(original_errors), state.get("answer"))
+            state["_validation_fallback_applied"] = True
+            state.setdefault("limitations", []).append("final_answer_replaced_after_validation")
+            state.setdefault("trace", [])
+            state["answer"] = (
+                self._deterministic_answer(state)
+                if "intent" in state
+                else "Final answer was replaced because validation rejected unsafe text."
+            )
+            self._append_trace(
+                state,
+                "validate_answer",
+                "original_rejected",
+                "error",
+                ",".join(original_errors),
+            )
+            fallback_answer_lower = state["answer"].lower()
+            fallback_errors = self._final_answer_phrase_errors(fallback_answer_lower, forbidden)
+            fallback_errors.extend(self._structured_source_errors(state))
+            fallback_source_error = self._source_consistency_error(state, fallback_answer_lower)
+            if fallback_source_error:
+                fallback_errors.append(fallback_source_error)
+            if self._violates_shap_interpretation(state, state["answer"]):
+                fallback_errors.append("llm_answer_replaced_for_shap_unit_misinterpretation")
+            if fallback_errors:
+                existing_validation_errors = state.setdefault("validation_errors", [])
+                existing_validation_errors.extend(
+                    error for error in fallback_errors if error not in existing_validation_errors
+                )
+                state["data_status"] = "partial"
+                self._append_trace(
+                    state,
+                    "validate_answer",
+                    "final_answer_violation",
+                    "error",
+                    ",".join(fallback_errors),
+                )
+            else:
+                self._append_trace(state, "validate_answer", "fallback_replacement", "ok", "safe_fallback_validated")
+
+    def _structured_source_errors(self, state: dict[str, Any]) -> list[str]:
         errors = []
         wallet_address = state.get("wallet_address")
         for source in state.get("sources", []):
@@ -1621,17 +1965,53 @@ class WalletRiskAgent:
             if normalized_claim[:30] not in normalized_text:
                 errors.append(f"unsupported_claim:{finding.chunk_id}")
                 finding.supported = False
-        if errors:
-            state["validation_errors"].extend(errors)
-            state["data_status"] = "partial"
-        forbidden = ["proved fraud", "proven fraud", "доказано мошенничество", "credit approved", "credit declined"]
-        answer_lower = state.get("answer", "").lower()
-        for phrase in forbidden:
-            if phrase in answer_lower:
-                state["validation_errors"].append(f"forbidden_answer_phrase:{phrase}")
-                state["data_status"] = "partial"
-        if state.get("llm_answer_was_truncated"):
-            state["validation_errors"].append("llm_answer_truncated")
+        return errors
+
+    def _contains_forbidden_final_phrase(self, answer_lower: str, phrase: str) -> bool:
+        if phrase == "proven fraud":
+            return bool(re.search(r"(?<!\bnot\s)(?<!\bnot\sbe\s)\bproven fraud\b", answer_lower))
+        if phrase == "proved fraud":
+            return bool(re.search(r"(?<!\bnot\s)(?<!\bnot\sbe\s)\bproved fraud\b", answer_lower))
+        return phrase in answer_lower
+
+    def _source_consistency_error(self, state: dict[str, Any], answer_lower: str) -> str | None:
+        if state.get("sources"):
+            return None
+        if not self._answer_claims_actual_retrieved_sources(answer_lower):
+            return None
+        return "llm_answer_replaced_for_source_consistency"
+
+    def _answer_claims_actual_retrieved_sources(self, answer_lower: str) -> bool:
+        source_noun = r"(documents?|sources?|chunks?|citations?|document[_\s-]?ids?|chunk[_\s-]?ids?|observation cards?)"
+        actual_source_patterns = [
+            rf"\b(retrieved|found|used|cited|ranked|returned|listed|provided)\b.{{0,80}}\b{source_noun}\b",
+            rf"\b{source_noun}\b.{{0,80}}\b(retrieved|found|used|cited|ranked|returned|listed|provided)\b",
+            rf"\baccording to\b.{{0,80}}\b(retrieved|found|provided|cited)?\s*{source_noun}\b",
+            rf"\bfollowing\s+{source_noun}\b",
+            r"\b[a-z0-9_]+/[a-z0-9_]+::chunk_[0-9]+\b",
+        ]
+        no_source_patterns = [
+            rf"\b(no|not any|without)\b.{{0,40}}\b{source_noun}\b.{{0,40}}\b(found|retrieved|available|used)\b",
+            rf"\b{source_noun}\b.{{0,40}}\b(were|was|are|is)\s+not\s+(found|retrieved|available|used)\b",
+            r"\bretrieval\s+(was\s+)?(not\s+)?(not called|skipped|unavailable|failed|not performed)\b",
+        ]
+        claim_segments = re.split(r"(?<=[.!?])\s+|[\n\r;]+", answer_lower)
+        for segment in claim_segments:
+            if not segment.strip():
+                continue
+            if not any(re.search(pattern, segment) for pattern in actual_source_patterns):
+                continue
+            if any(re.search(pattern, segment) for pattern in no_source_patterns):
+                continue
+            return True
+        return False
+
+    def _final_answer_phrase_errors(self, answer_lower: str, forbidden: list[str]) -> list[str]:
+        return [
+            f"forbidden_answer_phrase:{phrase}"
+            for phrase in forbidden
+            if self._contains_forbidden_final_phrase(answer_lower, phrase)
+        ]
 
     def _response(self, state: dict[str, Any]) -> AgentResponse:
         if "llm" not in state:
@@ -1832,7 +2212,4 @@ def langchain_tool_specs() -> dict[str, Any]:
 
 
 def validate_agent_request(payload: dict[str, Any]) -> AgentRequest:
-    try:
-        return AgentRequest(**payload)
-    except ValidationError:
-        raise
+    return AgentRequest(**payload)

@@ -9,6 +9,14 @@ import requests
 
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
+FALLBACK_VALIDATION_MARKERS = {
+    "llm_answer_fallback",
+    "llm_answer_fallback_after_truncation",
+    "llm_answer_fallback_after_unavailable",
+    "llm_answer_fallback_after_error",
+    "llm_answer_fallback_after_empty_response",
+    "llm_answer_truncated",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -104,9 +112,72 @@ def fmt_value(value: Any) -> str:
     return str(value)
 
 
+def score_threshold_relation(risk: dict[str, Any]) -> str:
+    score = risk.get("score")
+    threshold = risk.get("threshold")
+    if not isinstance(score, int | float) or not isinstance(threshold, int | float):
+        return "-"
+    if score > threshold:
+        return "above"
+    if score < threshold:
+        return "below"
+    return "equal"
+
+
+def feature_dictionary_note(feature_name: str) -> str | None:
+    if feature_name.endswith("_count"):
+        return "dataset count field"
+    if feature_name.endswith("_timestamp"):
+        return "Unix-like timestamp field in the source table"
+    return None
+
+
 def print_section(title: str) -> None:
     print()
     print(f"== {title} ==")
+
+
+def replacement_reasons(analysis: dict[str, Any]) -> list[str]:
+    markers = list(analysis.get("limitations") or []) + list(analysis.get("validation_errors") or [])
+    reasons = []
+    for marker in markers:
+        if (
+            isinstance(marker, str)
+            and (
+                marker == "final_answer_replaced_after_validation"
+                or marker.startswith("llm_answer_replaced_")
+                or marker.startswith("llm_answer_fallback_after_")
+            )
+            and marker not in reasons
+        ):
+            reasons.append(marker)
+    return reasons
+
+
+def final_answer_validation_errors(analysis: dict[str, Any]) -> list[str]:
+    trace = analysis.get("trace") or []
+    errors = analysis.get("validation_errors") or []
+    final_errors = []
+    for error in errors:
+        if not isinstance(error, str):
+            continue
+        if error in FALLBACK_VALIDATION_MARKERS:
+            continue
+        if error.startswith("llm_answer_replaced_") or error.startswith("llm_answer_fallback_after_"):
+            continue
+        final_errors.append(error)
+    structural_errors = [
+        error
+        for error in final_errors
+        if error.startswith(("foreign_wallet_source:", "missing_chunk:", "unsupported_claim:"))
+    ]
+    if structural_errors:
+        return structural_errors
+    if any(item.get("action") == "fallback_replacement" for item in trace) and not any(
+        item.get("action") == "final_answer_violation" for item in trace
+    ):
+        return []
+    return final_errors
 
 
 def summarize_state(analysis: dict[str, Any]) -> str:
@@ -114,16 +185,19 @@ def summarize_state(analysis: dict[str, Any]) -> str:
     llm = analysis.get("llm") or {}
     risk_status = risk.get("status")
     llm_status = llm.get("status")
-    validation_errors = analysis.get("validation_errors") or []
+    replacements = replacement_reasons(analysis)
+    final_errors = final_answer_validation_errors(analysis)
 
     if llm_status in {"unavailable", "error"}:
         return f"LLM {llm_status}: structured API response was returned with explicit LLM status."
+    if final_errors:
+        return "Final answer failed validation: review validation_errors and trace."
     if risk_status == "not_requested":
         return "Risk not requested: the Agent should not present a model score for this request."
     if risk_status == "insufficient_data":
         return "Insufficient data: scoring was requested, but required model features were not supplied."
-    if validation_errors:
-        return "Completed with validation errors: review the validation_errors section."
+    if replacements:
+        return "Original LLM text was rejected; safe deterministic fallback was returned."
     if risk_status == "scored":
         return "Successful scoring response."
     return f"Completed with risk.status={risk_status or '-'}."
@@ -150,6 +224,17 @@ def print_agent_summary(analysis: dict[str, Any]) -> None:
     print(f"execution_mode: {fmt_value(analysis.get('execution_mode'))}")
     selected = analysis.get("selected_tools") or []
     print(f"selected_tools: {', '.join(selected) if selected else '-'}")
+    replacements = replacement_reasons(analysis)
+    final_errors = final_answer_validation_errors(analysis)
+    if replacements:
+        print("original_llm_text_rejected: yes")
+        print(f"safe_fallback_returned: {'no' if final_errors else 'yes'}")
+        print("replacement_reasons: " + ", ".join(replacements))
+    if final_errors:
+        print("final_answer_validation: failed")
+        print("final_answer_errors: " + ", ".join(final_errors))
+    elif replacements:
+        print("final_answer_validation: passed_after_fallback")
 
 
 def print_risk(analysis: dict[str, Any]) -> None:
@@ -162,6 +247,7 @@ def print_risk(analysis: dict[str, Any]) -> None:
     print(f"risk.status: {fmt_value(risk.get('status'))}")
     print(f"score: {fmt_value(risk.get('score'))}")
     print(f"threshold: {fmt_value(risk.get('threshold'))}")
+    print(f"relation: {score_threshold_relation(risk)}")
     print(f"prediction: {fmt_value(risk.get('prediction'))}")
     print(f"model_version: {fmt_value(risk.get('model_version'))}")
     print(f"schema_version: {fmt_value(risk.get('schema_version'))}")
@@ -171,10 +257,12 @@ def print_risk(analysis: dict[str, Any]) -> None:
         print()
         print("Top features:")
         for item in top_features[:8]:
+            dictionary_note = feature_dictionary_note(str(item.get("feature")))
+            suffix = f", dictionary_note={dictionary_note}" if dictionary_note else ""
             print(
                 "- "
                 f"{item.get('feature')}: value={fmt_value(item.get('value'))}, "
-                f"impact={fmt_value(item.get('impact'))}"
+                f"impact={fmt_value(item.get('impact'))}{suffix}"
             )
 
 
@@ -255,6 +343,18 @@ def save_json(path: Path, body: dict[str, Any]) -> None:
     path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def save_client_context(path: Path, *, features_file: Path | None, features_note: str | None) -> Path | None:
+    if not features_file or not features_note:
+        return None
+    context_path = path.with_suffix(path.suffix + ".client_context.json")
+    payload = {
+        "features_file": str(features_file),
+        "features_origin_warning": features_note,
+    }
+    context_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return context_path
+
+
 def main() -> int:
     args = parse_args()
     payload, features_note = build_payload(args)
@@ -264,6 +364,13 @@ def main() -> int:
 
     if args.save_json:
         save_json(args.save_json, body)
+        client_context_path = save_client_context(
+            args.save_json,
+            features_file=args.features_file,
+            features_note=features_note,
+        )
+    else:
+        client_context_path = None
 
     print_question_answer(args.question, answer, args.features_file, features_note)
     print_agent_summary(analysis)
@@ -277,6 +384,8 @@ def main() -> int:
     print(f"{elapsed_ms:.1f} ms")
     if args.save_json:
         print(f"raw_json: {args.save_json}")
+    if client_context_path:
+        print(f"client_context_json: {client_context_path}")
     return 0
 
 

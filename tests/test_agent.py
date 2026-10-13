@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Any
 
@@ -86,6 +87,29 @@ class BrokenScoringAdapter(FakeScoringAdapter):
         raise RuntimeError("scoring_unavailable")
 
 
+class BadAggregationScoringAdapter(FakeScoringAdapter):
+    def score_rows(self, feature_rows=None, *, wallet_address=None, row_ids=None):
+        rows = (
+            RowScore(
+                row_id="row-0",
+                wallet_address=wallet_address,
+                score=0.72,
+                prediction=1,
+                threshold=self.threshold,
+                model_version=self.model_version,
+                schema_version=self.schema_version,
+            ),
+        )
+        return ScoringResult(
+            status="scored",
+            model_version=self.model_version,
+            schema_version=self.schema_version,
+            wallet_address=wallet_address,
+            rows=rows,
+            aggregation=None,
+        )
+
+
 class FixedScoreAdapter(FakeScoringAdapter):
     def __init__(self, *, score: float, threshold: float, prediction: int):
         self.score = score
@@ -160,6 +184,32 @@ class FakeTruncatedAnswerProvider(FakeToolCallingProvider):
             LLMStatus(provider="fake", model=self.model, status="ok", done_reason="length", eval_count=512),
             "3. **Document ID:** derived_wallet_001",
         )
+
+
+class FakeTruncatedThenUnavailableProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["retrieval"])
+        self.generate_calls: list[dict[str, Any]] = []
+
+    def generate(self, prompt, num_predict=None):
+        self.generate_calls.append({"prompt": prompt, "num_predict": num_predict})
+        if len(self.generate_calls) == 1:
+            return (
+                LLMStatus(provider="fake", model=self.model, status="ok", done_reason="length", eval_count=64),
+                "Partial answer:",
+            )
+        return (
+            LLMStatus(provider="fake", model=self.model, status="unavailable", error="retry_timeout"),
+            None,
+        )
+
+
+class FakeEmptyOkAnswerProvider(FakeToolCallingProvider):
+    def __init__(self):
+        super().__init__(["retrieval"])
+
+    def generate(self, prompt, num_predict=None):
+        return LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop"), ""
 
 
 class FakeUnsafeInsufficientDataProvider(FakeToolCallingProvider):
@@ -240,6 +290,18 @@ class FakeScoredTextProvider(FakeToolCallingProvider):
         )
 
 
+class FakeSourceClaimProvider(FakeToolCallingProvider):
+    def __init__(self, tool_names, text: str):
+        super().__init__(tool_names)
+        self.text = text
+
+    def generate(self, prompt, num_predict=None):
+        return (
+            LLMStatus(provider="fake", model=self.model, status="ok", done_reason="stop", eval_count=32),
+            self.text,
+        )
+
+
 class FakeUnavailableAnswerProvider(FakeToolCallingProvider):
     def __init__(self):
         super().__init__(["scoring", "shap", "retrieval"])
@@ -288,6 +350,11 @@ class WalletCardOnlyRetriever:
                 document_type="observation_card",
             )
         ]
+
+
+class EmptyRetriever:
+    def search_bm25(self, *_args, **_kwargs):
+        return []
 
 
 def _agent(tmp_path, *, max_steps=8, retriever=None):
@@ -477,6 +544,260 @@ def test_langgraph_scoring_error_skips_shap_and_keeps_retrieval(tmp_path):
     assert response.sources
 
 
+def test_langgraph_scoring_contract_error_skips_shap_and_keeps_retrieval(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeToolCallingProvider(["scoring", "shap", "retrieval"]),
+    )
+    agent.scoring_adapter = BadAggregationScoringAdapter()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score, factors, and document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "error"
+    assert response.risk.reason == "scoring_contract_missing_aggregation"
+    assert [status.name for status in response.tool_statuses] == ["scoring", "shap", "retrieval"]
+    assert response.tool_statuses[0].status == "error"
+    assert response.tool_statuses[1].status == "skipped"
+    assert response.tool_statuses[2].status == "ok"
+    assert "scoring_contract_error" in response.limitations
+    assert response.sources
+
+
+def test_multi_row_scoring_skips_single_row_shap_explanation(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeToolCallingProvider(["scoring", "shap"]),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score and factors for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": [
+                {"risky_tx_count": 1, "wallet_age": 100},
+                {"risky_tx_count": 30, "wallet_age": 10},
+            ],
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert response.risk.aggregation["records_count"] == 2
+    assert response.risk.top_features == []
+    shap_status = next(status for status in response.tool_statuses if status.name == "shap")
+    assert shap_status.status == "skipped"
+    assert shap_status.error == "aggregated_score_shap_not_supported"
+    assert "shap_skipped_aggregated_score_not_supported" in response.limitations
+
+
+def test_source_consistency_rejects_saved_multirow_defect_without_retrieval(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["scoring", "shap"],
+            "Given the methodology documents retrieved, there is not enough detailed information "
+            "to provide a comprehensive explanation of the risk factors beyond the score.",
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain risk score and factors for wallet {wallet_address} using both rows.",
+            "wallet_address": wallet_address,
+            "features": [
+                {"risky_tx_count": 1, "wallet_age": 100},
+                {"risky_tx_count": 30, "wallet_age": 10},
+            ],
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert response.risk.aggregation["records_count"] == 2
+    assert response.risk.top_features == []
+    assert response.llm.status == "ok"
+    assert "llm_answer_replaced_for_source_consistency" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "llm_answer_replaced_for_source_consistency" in response.validation_errors
+    assert "methodology documents retrieved" not in response.answer.lower()
+    assert response.sources == []
+    assert any(step.action == "original_rejected" for step in response.trace)
+    assert any(step.action == "fallback_replacement" for step in response.trace)
+
+
+def test_source_consistency_rejects_claim_when_retrieval_returns_empty(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["retrieval"],
+            "The following documents were retrieved and used: derived_wallet_001/derived_wallet_001::chunk_001.",
+        ),
+    )
+    agent.retriever = EmptyRetriever()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.tool_statuses[0].name == "retrieval"
+    assert response.tool_statuses[0].status == "ok"
+    assert response.sources == []
+    assert "llm_answer_replaced_for_source_consistency" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "derived_wallet_001/derived_wallet_001::chunk_001" not in response.answer
+
+
+def test_source_consistency_checks_positive_claims_separately_from_negation(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["retrieval"],
+            "No documents were found. According to retrieved documents, the wallet is supported by chunk_001.",
+        ),
+    )
+    agent.retriever = EmptyRetriever()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.sources == []
+    assert "llm_answer_replaced_for_source_consistency" in response.limitations
+    assert "according to retrieved documents" not in response.answer.lower()
+
+
+def test_source_consistency_allows_plain_no_documents_found(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(["retrieval"], "No documents were found for this wallet."),
+    )
+    agent.retriever = EmptyRetriever()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.sources == []
+    assert "llm_answer_replaced_for_source_consistency" not in response.limitations
+    assert "No documents were found" in response.answer
+
+
+def test_source_consistency_rejects_claim_when_retrieval_errors(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["retrieval"],
+            "According to retrieved documents, derived_wallet_001/derived_wallet_001::chunk_001 supports the answer.",
+        ),
+    )
+    agent.retriever = BrokenRetriever()
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.data_status == "partial"
+    retrieval_status = next(status for status in response.tool_statuses if status.name == "retrieval")
+    assert retrieval_status.status == "error"
+    assert response.llm.status == "ok"
+    assert "llm_answer_replaced_for_source_consistency" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "according to retrieved documents" not in response.answer.lower()
+
+
+def test_source_consistency_allows_actual_sources_present(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["retrieval"],
+            "The following documents were retrieved and used: derived_wallet_001/derived_wallet_001::chunk_001.",
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.sources
+    assert response.llm.status == "ok"
+    assert "llm_answer_replaced_for_source_consistency" not in response.limitations
+    assert "derived_wallet_001/derived_wallet_001::chunk_001" in response.answer
+
+
+def test_source_consistency_allows_rag_capability_description_without_sources(tmp_path):
+    agent, _wallet_address = _agent(tmp_path)
+    state = {
+        "sources": [],
+        "document_hits": [],
+        "document_findings": [],
+        "validation_errors": [],
+        "limitations": [],
+        "trace": [],
+        "data_status": "ok",
+        "risk": RiskBlock(status="not_requested"),
+        "answer": "The RAG layer can retrieve documents when a request asks for document evidence.",
+    }
+
+    agent._validate_answer(state)
+
+    assert state["data_status"] == "ok"
+    assert state["validation_errors"] == []
+    assert state["answer"] == "The RAG layer can retrieve documents when a request asks for document evidence."
+
+
+def test_fallback_validation_keeps_structural_source_errors_failed(tmp_path):
+    agent, wallet_address = _agent(tmp_path)
+    state = {
+        "intent": "documents",
+        "wallet_address": wallet_address,
+        "sources": [],
+        "document_hits": [],
+        "document_findings": [
+            DocumentFinding(
+                claim="Unsupported claim",
+                document_id="missing_doc",
+                chunk_id="missing_chunk",
+                source_kind="derived_data",
+                supported=True,
+                synthetic_demo=False,
+            )
+        ],
+        "validation_errors": [],
+        "limitations": [],
+        "trace": [],
+        "data_status": "ok",
+        "risk": RiskBlock(status="not_requested"),
+        "llm": LLMStatus(provider="fake", model="fake", status="ok"),
+        "answer": "This wallet is proven fraud.",
+    }
+
+    agent._validate_answer(state)
+
+    assert "missing_chunk:missing_chunk" in state["validation_errors"]
+    assert "final_answer_replaced_after_validation" in state["limitations"]
+    assert any(step.action == "final_answer_violation" for step in state["trace"])
+    assert not any(step.action == "fallback_replacement" for step in state["trace"])
+
+
 def test_langgraph_composite_question_returns_grounded_parts(tmp_path):
     agent, wallet_address = _agent_with_provider(
         tmp_path,
@@ -539,6 +860,23 @@ def test_agent_documents_query_does_not_call_scoring(tmp_path):
 
     assert response.intent == "documents"
     assert response.risk.status == "not_requested"
+    assert [status.name for status in response.tool_statuses] == ["retrieval"]
+
+
+def test_documents_only_with_features_still_uses_retrieval_only(tmp_path):
+    agent, wallet_address = _agent(tmp_path)
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.intent == "documents"
+    assert response.risk.status == "not_requested"
+    assert response.selected_tools == ["retrieval"]
     assert [status.name for status in response.tool_statuses] == ["retrieval"]
 
 
@@ -631,6 +969,27 @@ def test_langgraph_replaces_llm_low_risk_claim_when_data_is_insufficient(tmp_pat
     assert "LLM " not in response.answer
 
 
+def test_russian_wallet_risk_explanation_with_limits_routes_to_scoring_and_shap(tmp_path):
+    agent, wallet_address = _agent(tmp_path)
+
+    response = agent.run_langgraph(
+        {
+            "question": (
+                "Объясни оценку риска этого кошелька простыми словами: результат "
+                "модели, сравнение с порогом, основные факторы и ограничения."
+            ),
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.intent == "explain"
+    assert response.risk.status == "scored"
+    assert response.risk.top_features
+    assert response.selected_tools == ["scoring", "shap"]
+    assert [status.name for status in response.tool_statuses] == ["scoring", "shap"]
+
+
 def test_scored_answer_replacement_does_not_contradict_metadata(tmp_path):
     agent, wallet_address = _agent_with_provider(tmp_path, FakeUnsafeScoredProvider())
 
@@ -648,8 +1007,13 @@ def test_scored_answer_replacement_does_not_contradict_metadata(tmp_path):
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.validation_errors
     assert "insufficient data" not in response.answer.lower()
-    assert "score=0.720000" in response.answer
-    assert "LightGBM" in response.answer
+    assert "0,720" in response.answer
+    assert "SHAP" in response.answer
+    assert "калиброванная вероятность" in response.answer
+    assert "одобрить или отказать" in response.answer
+    assert "score=" not in response.answer
+    assert "prediction=" not in response.answer
+    assert "model_version" not in response.answer
 
 
 def test_saved_scoring_demo_contradiction_is_replaced(tmp_path):
@@ -682,12 +1046,132 @@ def test_saved_scoring_demo_contradiction_is_replaced(tmp_path):
     assert "llm_answer_fallback" in response.limitations
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.validation_errors
     assert response.data_status == "partial"
-    assert "score=0.358947" in response.answer
-    assert "threshold=0.344386" in response.answer
-    assert "relation=score is above threshold" in response.answer
+    assert "0,359" in response.answer
+    assert "0,344" in response.answer
+    assert "выше порога" in response.answer
+    assert "score=" not in response.answer
+    assert "threshold=" not in response.answer
+    assert "relation=" not in response.answer
     lowered = response.answer.lower()
     assert "below the threshold" not in lowered
     assert "not enough data" not in lowered
+
+
+def test_scored_fallback_is_readable_and_preserves_feature_names(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["scoring", "shap"],
+            "The model score is 0.7200, but it is below threshold and credit declined.",
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain the risk score for wallet {wallet_address} in plain words.",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert response.risk.score == 0.72
+    assert response.risk.threshold == 0.5
+    assert response.risk.model_version == "fake_model_v1"
+    assert response.risk.schema_version == "fake_schema_v1"
+    assert response.risk.top_features
+    assert response.answer.startswith("Оценка модели")
+    assert "0,720" in response.answer
+    assert "0,500" in response.answer
+    assert "выше порога" in response.answer
+    assert "risky_tx_count" in response.answer
+    assert "wallet_age" in response.answer
+    assert "SHAP показывает вклад признака" in response.answer
+    assert "не калиброванная вероятность" in response.answer
+    assert "score=" not in response.answer
+    assert "threshold=" not in response.answer
+    assert "prediction=" not in response.answer
+    assert "model_version" not in response.answer
+    assert "schema_version" not in response.answer
+    assert "dictionary_note" not in response.answer
+    assert "credit declined" not in response.answer.lower()
+
+
+def test_saved_russian_explain_shap_percentages_are_replaced(tmp_path):
+    saved_defect_answer = (
+        "Основные характеристики, влияющие на оценку риска, включают:\n"
+        "1. Время с последней ликвидации: Это значение влияет на оценку риска на 45.86%.\n"
+        "2. Время с первого захода: Это значение влияет на оценку риска на 25.13%.\n"
+        "3. Общая доступная сумма заемов в ETH: Это значение влияет на оценку риска на 19.99%."
+    )
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(["scoring", "shap"], saved_defect_answer),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": (
+                "Объясни оценку риска этого кошелька простыми словами: результат модели, "
+                "сравнение с порогом, основные факторы и ограничения."
+            ),
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert response.risk.top_features
+    assert "llm_answer_replaced_for_shap_unit_misinterpretation" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert "llm_answer_replaced_for_shap_unit_misinterpretation" in response.validation_errors
+    assert "%" not in response.answer
+    assert "raw output/margin LightGBM" in response.answer
+    assert "risky_tx_count" in response.answer
+
+
+def test_shap_guard_allows_percentage_feature_value_not_shap_percent(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeSourceClaimProvider(
+            ["scoring", "shap"],
+            "The utilization_percent feature value is 45%. SHAP impacts are kept in raw model-output units.",
+        ),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain the risk score for wallet {wallet_address} in plain words.",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10, "utilization_percent": 45},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert "llm_answer_replaced_for_shap_unit_misinterpretation" not in response.limitations
+    assert "utilization_percent feature value is 45%" in response.answer
+
+
+def test_rejected_llm_text_diagnostic_is_opt_in(tmp_path, monkeypatch):
+    diagnostics_dir = tmp_path / "diagnostics"
+    monkeypatch.setenv("AGENT_REJECTED_LLM_DIAGNOSTICS_DIR", str(diagnostics_dir))
+    rejected_text = "The risk score is 0.7200 and it is below the threshold of 0.5000."
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeScoredTextProvider(rejected_text))
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    files = list(diagnostics_dir.glob("rejected_llm_*.json"))
+    assert response.llm.status == "ok"
+    assert len(files) == 1
+    diagnostic = json.loads(files[0].read_text(encoding="utf-8"))
+    assert diagnostic["replacement_reason"] == "llm_answer_replaced_for_scored_risk_contradiction"
+    assert diagnostic["rejected_text"] == rejected_text
 
 
 def test_scored_answer_replacement_when_above_threshold_text_says_below(tmp_path):
@@ -707,7 +1191,7 @@ def test_scored_answer_replacement_when_above_threshold_text_says_below(tmp_path
     assert response.risk.score == 0.72
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "relation=score is above threshold" in response.answer
+    assert "выше порога" in response.answer
 
 
 def test_scored_answer_replacement_checks_all_score_mentions(tmp_path):
@@ -728,8 +1212,138 @@ def test_scored_answer_replacement_checks_all_score_mentions(tmp_path):
 
     assert response.risk.score == 0.72
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "score=0.720000" in response.answer
+    assert "0,720" in response.answer
     assert "0.9000" not in response.answer
+
+
+def test_scored_answer_labeled_numbers_do_not_cross_neighbor_fields(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score=0.358947. Threshold=0.344386. Prediction=1."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(
+        score=0.35894730197831315,
+        threshold=0.34438552759270996,
+        prediction=1,
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
+    assert "LLM explanation" in response.answer
+
+
+def test_scored_answer_labeled_numbers_accept_comma_separated_fields(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score=0.358947, threshold=0.344386, prediction=1."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(
+        score=0.35894730197831315,
+        threshold=0.34438552759270996,
+        prediction=1,
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.risk.status == "scored"
+    assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
+    assert "LLM explanation" in response.answer
+
+
+def test_scored_answer_labeled_numbers_accept_russian_labels(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Скор=0.358947, порог=0.344386, класс=1."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(
+        score=0.35894730197831315,
+        threshold=0.34438552759270996,
+        prediction=1,
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
+    assert "LLM explanation" in response.answer
+
+
+def test_scored_answer_replacement_checks_repeated_threshold_mentions(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score=0.7200. Threshold=0.5000. Later threshold=0.9000. Prediction=1."),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "0.9000" not in response.answer
+
+
+def test_scored_answer_replacement_when_repeated_score_is_wrong_after_correct_fields(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score=0.358947, threshold=0.344386, prediction=1. Later score=0.9000."),
+    )
+    agent.scoring_adapter = FixedScoreAdapter(
+        score=0.35894730197831315,
+        threshold=0.34438552759270996,
+        prediction=1,
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
+    assert "0.9000" not in response.answer
+
+
+def test_scored_answer_accepts_safe_not_proven_fraud_negation(tmp_path):
+    agent, wallet_address = _agent_with_provider(
+        tmp_path,
+        FakeScoredTextProvider("Score=0.7200. Threshold=0.5000. Prediction=1. This wallet is not proven fraud."),
+    )
+
+    response = agent.run_langgraph(
+        {
+            "question": f"What is the risk score for wallet {wallet_address}?",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert "forbidden_answer_phrase:proven fraud" not in response.validation_errors
+    assert "This wallet is not proven fraud." in response.answer
 
 
 def test_scored_answer_replacement_when_russian_text_says_below_threshold(tmp_path):
@@ -749,7 +1363,7 @@ def test_scored_answer_replacement_when_russian_text_says_below_threshold(tmp_pa
     assert response.risk.score == 0.72
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "relation=score is above threshold" in response.answer
+    assert "выше порога" in response.answer
 
 
 def test_scored_answer_replacement_when_prediction_contradicts_structured_risk(tmp_path):
@@ -768,7 +1382,8 @@ def test_scored_answer_replacement_when_prediction_contradicts_structured_risk(t
 
     assert response.risk.prediction == 1
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "prediction=1" in response.answer
+    assert response.risk.prediction == 1
+    assert "prediction=" not in response.answer
 
 
 def test_scored_answer_replacement_when_rule_arithmetic_is_impossible(tmp_path):
@@ -831,7 +1446,7 @@ def test_scored_answer_replacement_when_below_threshold_text_says_above(tmp_path
     assert response.risk.score == 0.25
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "relation=score is below threshold" in response.answer
+    assert "ниже порога" in response.answer
 
 
 def test_scored_answer_replacement_when_equal_threshold_text_says_above(tmp_path):
@@ -852,7 +1467,7 @@ def test_scored_answer_replacement_when_equal_threshold_text_says_above(tmp_path
     assert response.risk.score == 0.5
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "relation=score equals threshold" in response.answer
+    assert "равен порогу" in response.answer
 
 
 def test_methodology_explanation_with_wallet_uses_methodology_docs_without_scoring(tmp_path):
@@ -912,6 +1527,26 @@ def test_methodology_with_risk_and_sources_stays_general(tmp_path):
     assert all(source.document_id.startswith("method_") for source in response.sources)
     assert "tool_selection_intent_guard" in response.limitations
     assert any("intent_removed=scoring" in (step.detail or "") for step in response.trace)
+
+
+def test_methodology_with_wallet_and_features_stays_general(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeToolCallingProvider(["scoring", "shap", "retrieval"]))
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Explain the wallet risk scoring methodology, retrieval rules, and interpretation limits for {wallet_address}",
+            "wallet_address": wallet_address,
+            "features": {"risky_tx_count": 30, "wallet_age": 10},
+        }
+    )
+
+    assert response.intent == "general"
+    assert response.risk.status == "not_requested"
+    assert response.selected_tools == ["retrieval"]
+    assert [status.name for status in response.tool_statuses] == ["retrieval"]
+    assert response.sources
+    assert all(source.wallet_address is None for source in response.sources)
+    assert "tool_selection_intent_guard" in response.limitations
 
 
 def test_methodology_replacement_explains_method_documents(tmp_path):
@@ -1083,6 +1718,43 @@ def test_langgraph_falls_back_when_llm_answer_stays_truncated(tmp_path):
     assert response.answer != "3. **Document ID:** derived_wallet_001"
 
 
+def test_langgraph_retry_unavailable_preserves_retry_reason(tmp_path):
+    provider = FakeTruncatedThenUnavailableProvider()
+    agent, wallet_address = _agent_with_provider(tmp_path, provider)
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert len(provider.generate_calls) == 2
+    assert response.llm.status == "unavailable"
+    assert response.llm.error == "retry_timeout"
+    assert "llm_answer_retry_after_truncation" in response.limitations
+    assert "llm_answer_fallback_after_unavailable" in response.limitations
+    assert "llm_answer_fallback_after_truncation" not in response.limitations
+    assert "llm_answer_truncated" not in response.validation_errors
+    assert response.answer
+
+
+def test_langgraph_empty_ok_llm_answer_uses_marked_fallback(tmp_path):
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeEmptyOkAnswerProvider())
+
+    response = agent.run_langgraph(
+        {
+            "question": f"Show document sources for wallet {wallet_address}",
+            "wallet_address": wallet_address,
+        }
+    )
+
+    assert response.llm.status == "ok"
+    assert "llm_answer_fallback_after_empty_response" in response.limitations
+    assert "llm_answer_fallback" in response.limitations
+    assert response.answer
+
+
 def test_unavailable_llm_answer_fallback_is_marked_and_status_preserved(tmp_path):
     agent, wallet_address = _agent_with_provider(tmp_path, FakeUnavailableAnswerProvider())
 
@@ -1100,7 +1772,7 @@ def test_unavailable_llm_answer_fallback_is_marked_and_status_preserved(tmp_path
     assert response.llm.error == "read timeout from fake ollama"
     assert "llm_answer_fallback_after_unavailable" in response.limitations
     assert "llm_answer_fallback" in response.limitations
-    assert "score=0.720000" in response.answer
+    assert "0,720" in response.answer
     assert response.tool_statuses
 
 
@@ -1117,6 +1789,11 @@ def test_agent_max_steps_limits_tool_execution(tmp_path):
 
     assert "max_steps_reached" in response.limitations
     assert response.tool_statuses == []
+    assert response.risk.status == "error"
+    assert response.risk.reason == "scoring_not_executed_max_steps"
+    assert response.data_status == "partial"
+    assert response.llm.status == "skipped"
+    assert response.answer
 
 
 def test_langgraph_small_budget_does_not_call_llm_after_budget_exhaustion(tmp_path):
@@ -1134,10 +1811,32 @@ def test_langgraph_small_budget_does_not_call_llm_after_budget_exhaustion(tmp_pa
 
     assert "max_steps_reached" in response.limitations
     assert response.tool_statuses == []
+    assert response.risk.status == "error"
+    assert response.risk.reason == "scoring_not_executed_max_steps"
+    assert response.data_status == "partial"
     assert response.validation_errors == []
     assert response.answer
     assert provider.decide_calls == 0
     assert provider.generate_calls == 0
+
+
+def test_agent_rejects_invalid_budget_configuration(tmp_path):
+    agent, _wallet_address = _agent(tmp_path)
+
+    try:
+        WalletRiskAgent(
+            scoring_adapter=agent.scoring_adapter,
+            explainer=agent.explainer,
+            feature_names=agent.feature_names,
+            preprocessing=agent.preprocessing,
+            retriever=agent.retriever,
+            llm_provider=agent.llm_provider,
+            max_steps=0,
+        )
+    except ValueError as exc:
+        assert str(exc) == "max_steps must be at least 1"
+    else:
+        raise AssertionError("max_steps=0 should fail validation")
 
 
 def test_agent_duplicate_tool_call_is_blocked(tmp_path):
@@ -1161,6 +1860,29 @@ def test_agent_tool_timeout_is_reported(tmp_path):
     assert result.status == "timeout"
     assert state["tool_statuses"][0].status == "timeout"
     assert "slow_tool_timeout" in state["limitations"]
+
+
+def test_agent_tool_timeout_keeps_slot_until_task_finishes_and_late_result_is_ignored(tmp_path):
+    agent, _wallet_address = _agent(tmp_path)
+    agent.max_pending_tool_tasks = 1
+    agent._tool_executor.shutdown(wait=False, cancel_futures=True)
+    agent._tool_executor = type(agent._tool_executor)(max_workers=1)
+    agent._tool_slots = type(agent._tool_slots)(1)
+    state = {"called_tools": set(), "tool_statuses": [], "limitations": []}
+
+    first = agent._run_tool(state, "slow_tool", lambda: (time.sleep(0.2), "late")[1])
+    second = agent._run_tool(state, "retrieval", lambda: "should_not_start")
+    statuses_before_late_finish = [(status.name, status.status, status.error) for status in state["tool_statuses"]]
+    time.sleep(0.25)
+
+    assert first.status == "timeout"
+    assert second.status == "error"
+    assert second.error == "tool_queue_saturated"
+    assert statuses_before_late_finish == [
+        ("slow_tool", "timeout", "tool_timeout"),
+        ("retrieval", "error", "tool_queue_saturated"),
+    ]
+    assert [(status.name, status.status, status.error) for status in state["tool_statuses"]] == statuses_before_late_finish
 
 
 def test_agent_validation_rejects_existing_chunk_with_unsupported_claim(tmp_path):
@@ -1224,6 +1946,28 @@ def test_agent_validation_rejects_forbidden_answer_phrase(tmp_path):
 
     assert state["data_status"] == "partial"
     assert "forbidden_answer_phrase:proven fraud" in state["validation_errors"]
+    assert "proven fraud" not in state["answer"].lower()
+    assert "final_answer_replaced_after_validation" in state["limitations"]
+    assert any(step.action == "fallback_replacement" for step in state["trace"])
+
+
+def test_agent_validation_allows_not_proven_fraud_negation(tmp_path):
+    agent, _wallet_address = _agent(tmp_path)
+    state = {
+        "sources": [],
+        "document_hits": [],
+        "document_findings": [],
+        "validation_errors": [],
+        "data_status": "ok",
+        "risk": RiskBlock(status="not_requested"),
+        "answer": "This wallet is not proven fraud.",
+    }
+
+    agent._validate_answer(state)
+
+    assert state["data_status"] == "ok"
+    assert state["validation_errors"] == []
+    assert state["answer"] == "This wallet is not proven fraud."
 
 
 def test_prompt_injection_text_does_not_change_routing_or_sources(tmp_path):

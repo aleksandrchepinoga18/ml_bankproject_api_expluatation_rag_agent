@@ -1,0 +1,154 @@
+{
+  "request_id": "7b3d55049c6841159078838b96926e4a",
+  "agent_version": "wallet_risk_agent_v1",
+  "prompt_version": "wallet_risk_agent_prompt_v1",
+  "intent": "explain",
+  "wallet_address": "0x01da6f3b20d0540f24d390e28195ad7311516739",
+  "data_status": "partial",
+  "risk": {
+    "status": "scored",
+    "nature": "model_score_not_blockchain_fact",
+    "model_version": "lightgbm_89ef90618da4df9d",
+    "schema_version": "scoring_explanation_v1",
+    "score": 0.35894730197831315,
+    "threshold": 0.34438552759270996,
+    "prediction": 1,
+    "aggregation": {
+      "rule": "max_row_probability",
+      "score": 0.35894730197831315,
+      "prediction": 1,
+      "records_count": 1,
+      "representative_row_id": "input_row_0"
+    },
+    "top_features": [
+      {
+        "feature": "time_since_last_liquidated",
+        "value": 0,
+        "impact": 0.45860881252532515
+      },
+      {
+        "feature": "time_since_first_deposit",
+        "value": 0,
+        "impact": 0.25133144593223944
+      },
+      {
+        "feature": "total_available_borrows_eth",
+        "value": 0,
+        "impact": 0.1999779246509908
+      }
+    ],
+    "rule_triggers": [
+      {
+        "rule": "risky_tx_count_gt_20",
+        "feature": "risky_tx_count",
+        "value": 30.0,
+        "message": "обнаружено 30 рисковых транзакций"
+      },
+      {
+        "rule": "wallet_age_lt_7_days",
+        "feature": "wallet_age",
+        "value": 10.0,
+        "message": "кошелёк создан менее недели назад (0 дней)"
+      }
+    ],
+    "reason": null
+  },
+  "document_findings": [],
+  "sources": [],
+  "answer": "Оценка модели — 0,359 при пороге 0,344. Значение выше порога, поэтому модель отнесла пример к классу повышенного риска.\nОсновные SHAP-факторы:\n- time_since_last_liquidated: значение 0, SHAP-вклад 0,458609 (повышает raw output модели для риск-класса; единицы: raw output/margin LightGBM, не проценты и не вероятность)\n- time_since_first_deposit: значение 0, SHAP-вклад 0,251331 (повышает raw output модели для риск-класса; единицы: raw output/margin LightGBM, не проценты и не вероятность)\n- total_available_borrows_eth: значение 0, SHAP-вклад 0,199978 (повышает raw output модели для риск-класса; единицы: raw output/margin LightGBM, не проценты и не вероятность)\nОграничения: это результат модели, а не доказательство фрода, не калиброванная вероятность и не решение одобрить или отказать. SHAP показывает вклад признака в raw output/margin модели, а не причинное доказательство, процент или вероятность. Для demo/synthetic признаков и документов вывод предназначен только для проверки пайплайна.",
+  "limitations": [
+    "llm_answer_fallback",
+    "llm_answer_replaced_for_scored_risk_contradiction",
+    "tool_selection_coverage_guard"
+  ],
+  "tool_statuses": [
+    {
+      "name": "scoring",
+      "status": "ok",
+      "elapsed_ms": 127.81675400037784,
+      "error": null
+    },
+    {
+      "name": "shap",
+      "status": "ok",
+      "elapsed_ms": 70.67264199940837,
+      "error": null
+    }
+  ],
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "status": "ok",
+    "error": null,
+    "done_reason": "stop",
+    "eval_count": 260,
+    "prompt_eval_count": 765
+  },
+  "trace": [
+    {
+      "step": 1,
+      "node": "parse_request",
+      "action": "node",
+      "status": "ok",
+      "detail": "question=Объясни оценку риска этого кошелька простыми словами: результат модели, сравнение с порогом, основные факторы и ограниче; wallet_address=0x01da6f3b20d0540f24d390e28195ad7311516739; fallback_intent=explain"
+    },
+    {
+      "step": 2,
+      "node": "llm_tool_decision",
+      "action": "llm_tool_decision",
+      "status": "ok",
+      "detail": "source=llm_tool_calling; selected=scoring,shap; llm_status=ok; invalid=none; intent_removed=none; dependency_removed=none; coverage_added=scoring"
+    },
+    {
+      "step": 3,
+      "node": "scoring",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments=validated"
+    },
+    {
+      "step": 4,
+      "node": "scoring",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=127.817"
+    },
+    {
+      "step": 5,
+      "node": "shap",
+      "action": "tool_call",
+      "status": "ok",
+      "detail": "arguments=validated"
+    },
+    {
+      "step": 6,
+      "node": "shap",
+      "action": "tool_result",
+      "status": "ok",
+      "detail": "elapsed_ms=70.673"
+    },
+    {
+      "step": 7,
+      "node": "build_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": "llm_answer_replaced:llm_answer_replaced_for_scored_risk_contradiction"
+    },
+    {
+      "step": 8,
+      "node": "validate_answer",
+      "action": "node",
+      "status": "ok",
+      "detail": null
+    }
+  ],
+  "validation_errors": [
+    "llm_answer_replaced_for_scored_risk_contradiction"
+  ],
+  "execution_mode": "langgraph",
+  "tool_selection_source": "llm_tool_calling",
+  "selected_tools": [
+    "scoring",
+    "shap"
+  ]
+}

@@ -503,3 +503,335 @@ Operational status:
 - Server deployment: `not_run`.
 - Remote deployment: `not_run`.
 - Rollback verification: `not_run`.
+
+## Targeted Agent Review Fixes On 2026-10-13
+
+Scope:
+
+- Fixed `src/agent.py` review defects in one targeted pass while preserving the existing LangGraph router, API response schema, successful scoring/retrieval/fallback scenarios, and public `INTENTS` / `langchain_tool_specs` surface.
+- Models, training, corpus, vector index, MLflow, Docker image/container, deployment, rollback, git add/commit/push were not changed or run.
+
+Review report:
+
+| Defect | Fix | Verification | Remaining limitation |
+| --- | --- | --- | --- |
+| Labeled number extraction could bind `Threshold` to the previous `Score` value across neighboring fields. | `_extract_labeled_numbers` now scans local sentence/line segments and stops at adjacent known field labels while preserving repeated mention checks. | Added regressions for `Score=0.358947. Threshold=0.344386.`, repeated bad threshold, rounded values, prediction, English/Russian relation checks; `tests/test_agent.py` passed. | Label detection remains regex-based for the supported score/threshold/prediction wording. |
+| Final validation detected forbidden text such as `proven fraud` but returned the unsafe answer. | `_validate_answer` now records the rejection, replaces the answer with a safe fallback, validates that fallback once, and traces original rejection vs fallback replacement vs final violation. Negated `not proven fraud` is not treated as a positive fraud claim. | Added direct validation and LangGraph regressions for forbidden phrase replacement and negation. | Fallback is single-pass by design to avoid validation/fallback loops. |
+| Tool result conversion could fail after `_run_tool` and escape normal tool error handling. | Added explicit scoring/SHAP/retrieval result contract validation and conversion error mapping to honest tool `error` status. Bad scoring skips SHAP, keeps independent retrieval, and completes validation. | Added scoring contract regression for `aggregation=None`; existing scoring error and retrieval partial tests still pass. | Unknown programming errors inside tool execution still surface as tool errors rather than successful results. |
+| Builtin and LangGraph small-step budgets behaved differently and could report `not_requested` after requested scoring was blocked. | Builtin now mirrors LangGraph safe completion after budget exhaustion: no more tool/LLM calls, safe answer still built and validated, requested-but-unrun scoring becomes `risk.status=error`. Constructor validates budget/timeout settings. | Added/updated small-budget and config validation tests for builtin and LangGraph. | Small budget responses are intentionally partial because requested scoring did not run. |
+| Truncation retry fallback could misreport the retry failure reason. | Retry path now preserves retry `unavailable/error` status and marker separately from repeated truncation; empty `ok` response gets an explicit fallback reason. | Added regressions for successful retry, repeated truncation, retry unavailable, and empty `ok` response. | A truncated first answer is still recorded as `llm_answer_retry_after_truncation` before retry outcome. |
+| `_run_tool` created one executor per call and timeout did not stop already-running work. | Agent now owns a bounded executor plus semaphore; saturation returns `tool_queue_saturated`, timeout is reported as an await timeout, and the slot is released only when the background task actually finishes. | Added regression that a timed-out task holds the slot, a second task is predictably rejected, and late completion does not mutate returned state. | Timed-out Python work is not force-killed; it is bounded and ignored after timeout. |
+| Multi-row aggregated score could be explained with SHAP from only the first row. | SHAP is skipped for multi-row aggregate scoring with explicit `aggregated_score_shap_not_supported` status/limitation; one-row SHAP remains unchanged. | Added multi-row scoring regression; existing one-row combined/explain tests pass. | Aggregate SHAP explanation is not implemented for `max_row_probability`; unsupported explanation is explicitly skipped. |
+| Minimal cleanup requested. | Removed the redundant `try/except ValidationError: raise` in `validate_agent_request` and updated the prompt wording from deterministic-only routing to selected-and-validated router wording. | Ruff, mypy, and full pytest passed. | No broader graph cleanup, re-planning, checkpointer, reducers, or web UI changes were made. |
+
+Local checks through existing `.venv`:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py -q` -> `54 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 51 source files` plus one note about unchecked untyped test function bodies.
+- `.venv\Scripts\python.exe -m pytest -q` -> `93 passed, 929 warnings`.
+
+Docker/Ollama smoke after these changes:
+
+- Status: `not_run`.
+- Required next action: run the existing Docker/Ollama smoke/demo flow against a container built from these code changes, then verify `/health/ready`, `/version`, document-only, methodology, scoring, combined, fallback markers, real `llm.status/error`, and multi-row SHAP-skip behavior.
+
+## Docker API Review Smoke On 2026-10-13
+
+Checked already rebuilt Docker API at `http://127.0.0.1:8080`; Docker was not rebuilt and the container was not stopped.
+Code, models, corpus, index, and MLflow were not changed in this smoke pass.
+
+Saved raw JSON:
+
+- `results/docker_api_health_ready_review_2026-10-13.json`
+- `results/docker_api_version_review_2026-10-13.json`
+- `results/docker_api_metrics_review_2026-10-13.json`
+- `results/demo_agent_documents_review_2026-10-13.json`
+- `results/demo_agent_methodology_review_2026-10-13.json`
+- `results/demo_agent_scoring_review_2026-10-13.json`
+- `results/demo_agent_combined_review_2026-10-13.json`
+- `results/demo_agent_multirow_review_2026-10-13.json`
+
+Short smoke report:
+
+- Report file: `docs/docker_api_review_smoke_2026-10-13.md`.
+- `/health/ready`: `ready`; model, scoring adapter, retrieval index, corpus all `true`.
+- `/version`: Ollama provider with `qwen2.5:7b-instruct`; model `lightgbm_89ef90618da4df9d`; schema `scoring_explanation_v1`; corpus `demo_corpus_v1`; index `idx_422d98707f81`.
+- `/metrics`: availability `1.0`; 5xx error rate `0.0`; Agent total `140`; answer replacement rate `0.114286`; source correctness `64/64`. The answer replacement metric is a fallback/replacement count, not proof of LLM answer quality.
+- Documents scenario: `intent=documents`, `risk.status=not_requested`, retrieval `ok`, 3 sources, `llm.status=ok`, `done_reason=stop`, no fallback marker.
+- Methodology scenario: `intent=general`, retrieval `ok`, 2 method sources, final answer deterministic; `llm.status=skipped`, `llm.error=answer_generation_skipped_for_explicit_methodology`.
+- Scoring scenario: score `0.35894730197831315`, threshold `0.34438552759270996`, prediction `1`; original LLM text rejected with `llm_answer_replaced_for_scored_risk_contradiction`; final answer is deterministic fallback with `llm_answer_fallback`.
+- Combined scenario: scoring/SHAP/retrieval all `ok`; same score/threshold/prediction; 3 sources; LLM retry path ended truncated with `llm.status=ok`, `done_reason=length`, markers `llm_answer_retry_after_truncation`, `llm_answer_fallback_after_truncation`, `llm_answer_fallback`.
+- Multi-row scoring: aggregate score `0.3615507526626647`, threshold `0.34438552759270996`, prediction `1`, `aggregation.records_count=2`, representative row `review-row-a`; SHAP first-row explanation was not returned as aggregate explanation because `risk.top_features=[]` and tool `shap=skipped(aggregated_score_shap_not_supported)`.
+
+Defect preserved as concrete example:
+
+- `results/demo_agent_multirow_review_2026-10-13.json` final answer includes an LLM explanation sentence claiming `Given the methodology documents retrieved...` while the same response has `sources=[]`, no retrieval tool status, and selected tools only `scoring, shap`.
+- This is a final-answer source consistency defect in the multi-row scenario. The aggregate score and explicit SHAP skip are correct, but the LLM-generated explanatory tail refers to methodology documents that were not retrieved.
+
+## Source-Consistency Final Validation Fix On 2026-10-13
+
+Scope:
+
+- Fixed the final-answer source consistency defect found in `results/demo_agent_multirow_review_2026-10-13.json`.
+- The fix is in the shared final validation layer for all intents, not in the multi-row path.
+- LangGraph topology, scoring, multi-row SHAP policy, models, corpus, index, MLflow, Docker, commit, and push were not changed or run.
+
+Fix summary:
+
+- `_validate_answer` now rejects final answers that claim documents/sources/chunks were actually retrieved, found, used, ranked, cited, returned, or linked when `sources` is empty.
+- The guard distinguishes actual source claims from capability descriptions such as "the RAG layer can retrieve documents" and from explicit no-source statements such as "documents were not found".
+- On violation, the original answer is replaced with deterministic fallback, `llm_answer_replaced_for_source_consistency` and generic `llm_answer_fallback` markers are preserved, real `llm.status/error` remains unchanged, and the fallback is checked once for final-answer violations.
+
+Regression coverage added:
+
+- Saved multi-row defect shape without depending on the local `results` file: scoring + SHAP selected, retrieval not called, sources empty, LLM claims methodology documents were retrieved.
+- Retrieval not called.
+- Retrieval returned an empty list.
+- Retrieval ended with an error.
+- Real sources are present, so source claims are allowed.
+- RAG capability wording without actual-source claims is allowed.
+
+Validation:
+
+- `.venv\Scripts\python.exe -m pytest <source-consistency regression tests> -q` -> `5 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py -q` -> `59 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 51 source files` plus the existing note about unchecked untyped test function bodies.
+- `.venv\Scripts\python.exe -m pytest -q` -> `98 passed, 929 warnings`.
+
+Docker follow-up:
+
+- Docker smoke after this code fix: `not_run`.
+- Next Docker check should rerun the multi-row scenario that previously produced `Given the methodology documents retrieved...` and confirm the final answer is deterministic fallback with `llm_answer_replaced_for_source_consistency` when retrieval is absent and `sources=[]`.
+
+## Docker Source-Consistency Rerun On 2026-10-13
+
+Checked the already rebuilt Docker API at `http://127.0.0.1:8080`; Docker was not rebuilt and code was not changed.
+Commit/push were not performed.
+
+Saved raw JSON:
+
+- `results/docker_api_health_ready_source_consistency_2026-10-13.json`
+- `results/demo_agent_multirow_source_consistency_2026-10-13.json`
+- `results/demo_agent_documents_source_consistency_2026-10-13.json`
+
+Updated smoke report:
+
+- `docs/docker_api_review_smoke_2026-10-13.md`
+
+Results:
+
+- `/health/ready`: `ready`; model, scoring adapter, retrieval index, corpus all `true`.
+- Multi-row scenario: `intent=explain`, `risk.status=scored`, aggregate score `0.3615507526626647`, threshold `0.34438552759270996`, prediction `1`, `aggregation.records_count=2`, representative row `review-row-a`.
+- Multi-row SHAP: explicit skip preserved: `shap=skipped(aggregated_score_shap_not_supported)`, `risk.top_features=[]`.
+- Multi-row sources: `sources=[]`; final answer did not claim retrieved/found/used documents. It was accepted LLM text, not deterministic fallback, so source-consistency markers were not expected in this run.
+- Documents scenario: `intent=documents`, retrieval `ok`, 3 wallet-linked sources, `llm.status=ok`, `done_reason=stop`, no validation errors. Correct references to actual sources were accepted and not blocked.
+- If a future run produces a source claim with `sources=[]`, expected fallback markers are `llm_answer_replaced_for_source_consistency` and `llm_answer_fallback`.
+
+## Intent Routing Priority Fix On 2026-10-13
+
+Scope:
+
+- Fixed intent routing for a concrete wallet assessment request containing the Russian word `ограничения`.
+- Graph, API schema, scoring, models, data, corpus, index, MLflow, Docker, commit, and push were not changed or run.
+
+Fix summary:
+
+- Added a shared `asks_specific_wallet_assessment` helper and aligned `classify_intent` with `is_explicit_methodology_question`.
+- A concrete wallet-risk explanation request such as `Объясни оценку риска этого кошелька простыми словами: результат модели, сравнение с порогом, основные факторы и ограничения.` now routes to `explain` and runs `scoring, shap` when features are supplied.
+- Explicit methodology/rules/feature-dictionary/retrieval-rules questions still route to `general` even when `wallet_address` and `features` are supplied.
+- Documents-only routing remains `documents` and retrieval-only, including when features are present.
+
+Regression coverage added:
+
+- Russian concrete wallet-risk explanation with `ограничения` -> `intent=explain`, tools `scoring, shap`.
+- General methodology question with wallet/features -> `intent=general`, tool `retrieval` only.
+- Documents-only question with wallet/features -> `intent=documents`, tool `retrieval` only.
+
+Validation:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py::test_russian_wallet_risk_explanation_with_limits_routes_to_scoring_and_shap tests/test_agent.py::test_methodology_with_wallet_and_features_stays_general tests/test_agent.py::test_documents_only_with_features_still_uses_retrieval_only -q` -> `3 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 51 source files` plus the existing unchecked untyped test note.
+- `.venv\Scripts\python.exe -m pytest -q` -> `101 passed, 929 warnings`.
+
+## Readable Scored Fallback And Demo Statuses On 2026-10-13
+
+Scope:
+
+- Completed the user-facing deterministic scored/explain fallback without changing graph, scoring, models, corpus, index, MLflow, Docker, public API schema, commit, or push.
+- Checked the previous response shape: rejected LLM text is not present in normal public responses/raw JSON, so it was not reconstructed by guess.
+
+Fix summary:
+
+- Deterministic scored fallback now starts with a plain-language score-vs-threshold result, then lists SHAP factors, then states limitations.
+- The fallback keeps exact structured `risk.score`, `risk.threshold`, `prediction`, `model_version`, `schema_version`, original feature names, values, and SHAP impacts in the structured response.
+- The fallback does not treat score as a calibrated probability, does not present SHAP as causal proof, and does not add approve/decline decisions.
+- Existing feature-dictionary suffix notes are used for `_count` and `_timestamp` fields without inventing units or causal explanations.
+- `scripts/demo_agent.py` now distinguishes rejected original LLM text with safe deterministic fallback from a final answer that still failed validation, while preserving `validation_errors` and replacement reasons.
+- Demo feature provenance is preserved by the client in an adjacent `*.client_context.json` sidecar when `--save-json` and a feature-file note are used, leaving the raw API JSON unchanged.
+- Added opt-in local diagnostics via `AGENT_REJECTED_LLM_DIAGNOSTICS_DIR`; when enabled, the next rejected LLM answer is saved locally with the exact text, replacement reason, request id, intent, and real `llm.status/error`. It is disabled by default and does not write full text to normal production logs.
+
+Regression coverage added:
+
+- Readable scored fallback includes score/threshold relation, SHAP factor names, non-causal SHAP limitation, and no rejected approve/decline text.
+- Opt-in rejected-LLM diagnostic writes the exact rejected text and reason.
+- Demo client status separates safe fallback from real final validation failure.
+- Demo client sidecar preserves synthetic/demo feature warnings.
+
+Validation:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_demo_agent.py tests/test_agent.py::test_scored_fallback_is_readable_and_preserves_feature_names tests/test_agent.py::test_rejected_llm_text_diagnostic_is_opt_in -q` -> `6 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 52 source files` plus the existing unchecked untyped test note.
+- `.venv\Scripts\python.exe -m pytest -q` -> `107 passed, 929 warnings`.
+
+## Final Review Defects In Agent Output Validation On 2026-10-13
+
+Scope:
+
+- Fixed only the three final-review defects in `src/agent.py` and `scripts/demo_agent.py`.
+- Graph, models, data, MLflow, API schema, Docker, commit, and push were not changed or run.
+
+Fix summary:
+
+- `_extract_labeled_numbers` no longer binds one number to two neighboring fields. Correct forms such as `Score=0.358947, threshold=0.344386, prediction=1.` are accepted, while repeated genuinely wrong score/threshold mentions are still rejected.
+- Mojibake Russian field labels in `_extract_labeled_numbers` were replaced with valid Russian labels for `скор`, `оценка`, `порог`, `предсказание`, and `класс`; Russian relation checks also preserve explicit above/below/equal phrase handling.
+- Source-consistency validation now checks source claims per sentence/segment. A valid negation such as `No documents were found` no longer suppresses a separate unsupported claim such as `According to retrieved documents...`; plain no-source statements and RAG capability descriptions remain allowed.
+- After text fallback, validation now rechecks structured `sources` and `document_findings`; remaining structural errors produce `final_answer_violation` rather than `safe_fallback_validated`. Duplicate validation errors are not re-added.
+- `scripts/demo_agent.py` gives final validation errors priority in `summarize_state` and does not hide remaining structural source/finding errors just because fallback replacement occurred.
+
+Regression coverage added:
+
+- Correct comma-separated score/threshold/prediction fields.
+- Correct Russian score/threshold/class field labels.
+- Repeated wrong score after correct fields.
+- Mixed no-source negation plus a separate positive retrieved-documents claim.
+- Plain `No documents were found` and RAG capability text stay allowed.
+- Structured `document_findings` errors after fallback remain final validation failures.
+- Demo client does not hide structural errors after fallback.
+
+Validation:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py::test_scored_answer_labeled_numbers_do_not_cross_neighbor_fields tests/test_agent.py::test_scored_answer_labeled_numbers_accept_comma_separated_fields tests/test_agent.py::test_scored_answer_labeled_numbers_accept_russian_labels tests/test_agent.py::test_scored_answer_replacement_checks_repeated_threshold_mentions tests/test_agent.py::test_scored_answer_replacement_when_repeated_score_is_wrong_after_correct_fields tests/test_agent.py::test_source_consistency_checks_positive_claims_separately_from_negation tests/test_agent.py::test_source_consistency_allows_plain_no_documents_found tests/test_agent.py::test_source_consistency_allows_rag_capability_description_without_sources tests/test_agent.py::test_fallback_validation_keeps_structural_source_errors_failed tests/test_demo_agent.py -q` -> `14 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 52 source files` plus the existing unchecked untyped test note.
+- `.venv\Scripts\python.exe -m pytest -q` -> `114 passed, 929 warnings`.
+
+## Docker Final Review Rerun On 2026-10-13
+
+Scope:
+
+- Checked the already rebuilt Docker API at `http://127.0.0.1:8080`.
+- Docker was not rebuilt, code was not changed, and commit/push were not performed.
+
+Raw JSON saved:
+
+- `results/docker_api_health_ready_final_review_2026-10-13.json`
+- `results/demo_agent_russian_explain_final_review_2026-10-13.json`
+- `results/demo_agent_russian_explain_final_review_2026-10-13.json.client_context.json`
+- `results/demo_agent_documents_final_review_2026-10-13.json`
+
+Results:
+
+- `/health/ready`: `ready`; model, scoring adapter, retrieval index, and corpus checks all `true`.
+- Russian explain request: `intent=explain`, tools `scoring, shap`, `risk.status=scored`, score `0.35894730197831315`, threshold `0.34438552759270996`, prediction `1`, relation above threshold, `llm.status=ok`, `done_reason=stop`, `validation_errors=[]`, `sources=[]`.
+- Russian explain answer: deterministic prefix is readable and does not include `score=...`, `threshold=...`, `prediction=...`, `model_version`, `schema_version`, or `dictionary_note` key-value noise. It was accepted LLM text with deterministic prefix, not safe fallback.
+- Demo feature warning was preserved in the client sidecar JSON.
+- Documents request: `intent=documents`, tool `retrieval`, `risk.status=not_requested`, retrieval `ok`, 3 wallet-linked sources, `llm.status=ok`, `done_reason=stop`, `validation_errors=[]`.
+- Documents answer: correct references to actual returned sources were allowed; no source-consistency fallback was triggered.
+- Safe fallback vs final errors: neither response had `llm_answer_*` fallback markers, `final_answer_replaced_after_validation`, or `final_answer_violation`; these were successful accepted LLM responses with no remaining final validation errors.
+
+Defect preserved:
+
+- `results/demo_agent_russian_explain_final_review_2026-10-13.json` contains an accepted LLM explanation tail that describes SHAP impacts as percentages (`45.86%`, `25.13%`, `19.99%`).
+- The deterministic prefix is readable and numerically consistent, but the accepted LLM tail violates the desired SHAP presentation rule. This is not a safe-fallback result and should not be counted as evidence of fallback quality.
+
+Smoke report updated:
+
+- `docs/docker_api_review_smoke_2026-10-13.md`
+
+## SHAP Unit Interpretation Guard On 2026-10-13
+
+Scope:
+
+- Fixed the SHAP interpretation defect reproduced by `results/demo_agent_russian_explain_final_review_2026-10-13.json`.
+- Graph, model, data, API schema, Docker, commit, and push were not changed or run.
+
+Fix summary:
+
+- Confirmed the configured explainer reports `model_output=raw`; SHAP impacts from `shap.TreeExplainer(model)` are raw LightGBM output/margin contributions, not percentages, probabilities, or percentage points.
+- Deterministic scored fallback now prints each SHAP impact with direction and unit: raw output/margin LightGBM.
+- Prompt instructions now tell the LLM not to convert SHAP impacts to percentages/probabilities/percentage points unless a verified transform is provided.
+- Added a scored-answer guard that rejects LLM explanations presenting SHAP impacts as percentages, probabilities, or percentage points, while still allowing `%` for ordinary percentage-valued features.
+- On violation, the answer is replaced with deterministic fallback and existing fallback markers/reasons are preserved via `llm_answer_replaced_for_shap_unit_misinterpretation` plus `llm_answer_fallback`.
+
+Regression coverage added:
+
+- Saved Russian explain defect shape: SHAP impacts described as `45.86%`, `25.13%`, `19.99%` is rejected and replaced with fallback.
+- Allowed percentage feature value: `utilization_percent feature value is 45%` is accepted when it is not presented as a SHAP impact.
+
+Validation:
+
+- `.venv\Scripts\python.exe -c "from src.inference import load_explainer_and_metadata; e,*_=load_explainer_and_metadata(); print(getattr(getattr(e,'model',None),'model_output',None)); print(getattr(e,'model_output',None))"` -> `raw`, `raw`.
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py::test_saved_russian_explain_shap_percentages_are_replaced tests/test_agent.py::test_shap_guard_allows_percentage_feature_value_not_shap_percent tests/test_agent.py::test_scored_fallback_is_readable_and_preserves_feature_names -q` -> `3 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 52 source files` plus the existing unchecked untyped test note.
+- `.venv\Scripts\python.exe -m pytest -q` -> `116 passed, 929 warnings`.
+
+## Current Handoff State On 2026-10-13
+
+Confirmed status:
+
+- Local validation remains green: full pytest `116 passed`; Ruff and mypy passed.
+- The latest Docker Russian explain rerun completed as a safe deterministic fallback, not as accepted LLM text.
+- Raw result: `results/demo_agent_explain_shap_units_2026-10-13.json`.
+- Client warning sidecar: `results/demo_agent_explain_shap_units_2026-10-13.json.client_context.json`.
+- Fallback reason is `llm_answer_replaced_for_scored_risk_contradiction`; limitations include `llm_answer_fallback`, `llm_answer_replaced_for_scored_risk_contradiction`, and `tool_selection_coverage_guard`.
+- `llm.status=ok`, `llm.error=null`, `done_reason=stop`; this confirms the source LLM generation completed but was rejected.
+- Structured numbers are consistent: score `0.35894730197831315`, threshold `0.34438552759270996`, prediction `1`, relation above threshold.
+- The returned user answer reports SHAP in `raw output/margin LightGBM`, not as percentages; `%` is absent from the final answer.
+- The user-facing explanation remains too technical because it exposes raw feature names and raw SHAP units in the main answer.
+
+Important distinction:
+
+- Do not describe this Docker explain rerun as successful acceptance of LLM text.
+- Do not treat fallback as evidence of LLM output quality.
+- This run is a safety success for fallback validation, but the user-facing copy still needs a separate readability pass.
+
+Next task:
+
+- Check the feature dictionary and the actual meaning of features before replacing raw names with understandable labels.
+- Separate the plain-language user explanation from technical diagnostics.
+- Investigate the exact reason the LLM text was rejected.
+- Do not assume `rejected_text` exists in the saved raw API response. Check first. If local diagnostics were not enabled for that run, an explicit diagnostic reproduction will be required.
+
+Operational status:
+
+- Server deployment: `not_run`.
+- Rollback verification: `not_run`.
+
+## Readable Fallback Copy Polish On 2026-10-13
+
+Scope:
+
+- Polished only the deterministic scored/explain fallback copy and demo-client diagnostics.
+- Docker, graph, scoring, models, corpus, index, MLflow, public API schema, commit, and push were not changed or run.
+
+Fix summary:
+
+- Main fallback answer no longer exposes `relation=...`, `prediction=...`, `model_version=...`, `schema_version=...`, `dictionary_note=...`, or `score=.../threshold=...` key-value formatting.
+- The first paragraph is now human-readable: score and threshold are shown as rounded display numbers with comma decimal separator, followed by plain-language above/below/equal threshold text.
+- Exact score, threshold, prediction, model version, and schema version remain in the structured `risk` response.
+- SHAP factors keep original feature names unless a verified feature label exists; no unverified human expansion is invented.
+- SHAP impact is described only as model contribution, not as percent, probability, or causal proof.
+- `scripts/demo_agent.py` now prints diagnostic `relation` plus feature dictionary notes in the LightGBM/top-features diagnostic sections, while keeping demo-warning sidecar behavior.
+- Fallback markers and validation/replacement reporting are preserved.
+
+Validation:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_agent.py::test_scored_answer_replacement_does_not_contradict_metadata tests/test_agent.py::test_saved_scoring_demo_contradiction_is_replaced tests/test_agent.py::test_scored_fallback_is_readable_and_preserves_feature_names tests/test_agent.py::test_scored_answer_replacement_when_above_threshold_text_says_below tests/test_agent.py::test_scored_answer_replacement_checks_all_score_mentions tests/test_agent.py::test_scored_answer_replacement_when_prediction_contradicts_structured_risk tests/test_agent.py::test_unavailable_llm_answer_fallback_is_marked_and_status_preserved tests/test_demo_agent.py -q` -> `11 passed, 922 warnings`.
+- `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 52 source files` plus the existing unchecked untyped test note.
+- `.venv\Scripts\python.exe -m pytest -q` -> `107 passed, 929 warnings`.
