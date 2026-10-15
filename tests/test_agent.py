@@ -1,8 +1,10 @@
 import json
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pytest
 
 from src.agent import (
     AgentRequest,
@@ -1046,7 +1048,7 @@ def test_saved_scoring_demo_contradiction_is_replaced(tmp_path):
     assert "llm_answer_fallback" in response.limitations
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.validation_errors
     assert response.data_status == "partial"
-    assert "0,359" in response.answer
+    assert "0,35894730197831315" in response.answer
     assert "0,344" in response.answer
     assert "выше порога" in response.answer
     assert "score=" not in response.answer
@@ -1084,9 +1086,11 @@ def test_scored_fallback_is_readable_and_preserves_feature_names(tmp_path):
     assert "0,720" in response.answer
     assert "0,500" in response.answer
     assert "выше порога" in response.answer
-    assert "risky_tx_count" in response.answer
-    assert "wallet_age" in response.answer
-    assert "SHAP показывает вклад признака" in response.answer
+    assert "risky_tx_count" not in response.answer
+    assert "wallet_age" not in response.answer
+    assert "часть объяснения модели" in response.answer
+    assert "в подробностях" in response.answer
+    assert {item["feature"] for item in response.risk.top_features} == {"risky_tx_count", "wallet_age"}
     assert "не калиброванная вероятность" in response.answer
     assert "score=" not in response.answer
     assert "threshold=" not in response.answer
@@ -1126,8 +1130,9 @@ def test_saved_russian_explain_shap_percentages_are_replaced(tmp_path):
     assert "llm_answer_fallback" in response.limitations
     assert "llm_answer_replaced_for_shap_unit_misinterpretation" in response.validation_errors
     assert "%" not in response.answer
-    assert "raw output/margin LightGBM" in response.answer
-    assert "risky_tx_count" in response.answer
+    assert "raw output/margin LightGBM" not in response.answer
+    assert "risky_tx_count" not in response.answer
+    assert response.risk.top_features
 
 
 def test_shap_guard_allows_percentage_feature_value_not_shap_percent(tmp_path):
@@ -1149,6 +1154,7 @@ def test_shap_guard_allows_percentage_feature_value_not_shap_percent(tmp_path):
 
     assert response.risk.status == "scored"
     assert "llm_answer_replaced_for_shap_unit_misinterpretation" not in response.limitations
+    assert "llm_answer_fallback" not in response.limitations
     assert "utilization_percent feature value is 45%" in response.answer
 
 
@@ -1172,6 +1178,132 @@ def test_rejected_llm_text_diagnostic_is_opt_in(tmp_path, monkeypatch):
     diagnostic = json.loads(files[0].read_text(encoding="utf-8"))
     assert diagnostic["replacement_reason"] == "llm_answer_replaced_for_scored_risk_contradiction"
     assert diagnostic["rejected_text"] == rejected_text
+    assert diagnostic["rejection_detail"]["rule"] == "score_threshold_relation"
+    assert diagnostic["rejection_detail"]["expected"] == "above"
+    assert "below the threshold" in diagnostic["rejection_detail"]["detected"]
+
+
+def test_concise_scored_llm_answer_is_accepted_without_duplicate_tail(tmp_path):
+    text = (
+        "Оценка модели — 0,720 при пороге 0,500: значение выше порога. "
+        "Результат классификации — класс повышенного риска. "
+        "Показанные положительные SHAP-вклады направлены в сторону класса повышенного риска; "
+        "это часть объяснения модели. Модельные факторы доступны в подробностях; "
+        "их предметная интерпретация ограничена документацией исходных данных. "
+        "Это модельная оценка, не калиброванная вероятность мошенничества и не решение одобрить или отказать."
+    )
+    agent, wallet_address = _agent_with_provider(tmp_path, FakeSourceClaimProvider(["scoring", "shap"], text))
+    response = agent.run_langgraph({
+        "question": f"Explain risk score for wallet {wallet_address}",
+        "wallet_address": wallet_address, "features": {"risky_tx_count": 30, "wallet_age": 10},
+    })
+    assert response.llm.status == "ok"
+    assert response.answer.count("Результат классификации") == 1
+    assert response.answer.count("не калиброванная вероятность") == 1
+    assert "Показанные положительные SHAP-вклады" in response.answer
+    assert response.answer.count("Оценка модели") == 1
+    assert "llm_answer_fallback" not in response.limitations
+    assert response.validation_errors == []
+
+
+@pytest.mark.parametrize("score,threshold,prediction,label,relation", [
+    (0.5, 0.5, 1, "класс повышенного риска", "равно порогу"),
+    (0.2, 0.5, 0, "класс пониженного риска", "ниже порога"),
+    # Deliberately inconsistent metadata: display the supplied prediction, never infer another class.
+    (0.8, 0.5, 0, "класс пониженного риска", "выше порога"),
+])
+def test_scored_copy_uses_structured_prediction_and_preserves_unknown_factors(
+    tmp_path, score, threshold, prediction, label, relation,
+):
+    agent, _wallet = _agent(tmp_path)
+    factors = [
+        {"feature": feature, "value": 0, "impact": impact}
+        for feature, impact in [
+            ("time_since_last_liquidated", 0.458609),
+            ("time_since_first_deposit", 0.251331),
+            ("total_available_borrows_eth", 0.199978),
+        ]
+    ]
+    risk = RiskBlock(status="scored", score=score, threshold=threshold, prediction=prediction, top_features=factors)
+    answer = agent._deterministic_scored_answer({"risk": risk})
+    assert label in answer
+    assert relation in answer
+    assert "часть объяснения модели" in answer
+    assert "документацией исходных данных" in answer
+    assert "raw" not in answer
+    assert "margin" not in answer
+    assert "demo" not in answer
+    assert "синтетичес" not in answer
+    assert "ликвидац" not in answer
+    for item in factors:
+        assert item["feature"] not in answer
+    assert risk.top_features == factors
+
+
+@pytest.mark.parametrize("text,field,expected,detected", [
+    ("Score=0.9000.", "risk.score", 0.72, 0.9),
+    ("Оценка модели — 0,900 при пороге 0,500.", "risk.score", 0.72, 0.9),
+    ("Threshold=0.9000.", "risk.threshold", 0.5, 0.9),
+    ("Prediction=0.", "risk.prediction", 1, 0.0),
+    ("Prediction=0.5.", "risk.prediction", 1, 0.5),
+    ("30 risky transactions.", "risky_tx_count", 12, "30 risky transactions"),
+    ("Wallet age 10 days.", "wallet_age", "unit unverified; only raw numeric rule is supported", "wallet age 10 days"),
+])
+def test_local_rejection_diagnostic_identifies_exact_number(tmp_path, monkeypatch, text, field, expected, detected):
+    agent, _wallet = _agent(tmp_path)
+    directory = tmp_path / "diagnostics"
+    monkeypatch.setenv("AGENT_REJECTED_LLM_DIAGNOSTICS_DIR", str(directory))
+    state = {
+        "request_id": "diagnostic-numbers", "intent": "explain",
+        "request": AgentRequest(question="Explain", features={"risky_tx_count": 12, "wallet_age": 10}),
+        "risk": RiskBlock(status="scored", score=0.72, threshold=0.5, prediction=1),
+    }
+    reason = agent._answer_replacement_reason(state, text)
+    assert reason == "llm_answer_replaced_for_scored_risk_contradiction"
+    agent._save_rejected_llm_diagnostic(state, reason, text)
+    payload = json.loads(next(directory.glob("*.json")).read_text(encoding="utf-8"))
+    assert payload["rejection_detail"]["field"] == field
+    assert payload["rejection_detail"]["expected"] == expected
+    assert payload["rejection_detail"]["detected"] == detected
+    assert payload["rejected_text"] == text
+
+
+def test_rejection_diagnostics_disabled_by_default(tmp_path, monkeypatch, caplog):
+    monkeypatch.delenv("AGENT_REJECTED_LLM_DIAGNOSTICS_DIR", raising=False)
+    agent, _wallet = _agent(tmp_path)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("diagnostics must not write when disabled")
+
+    monkeypatch.setattr(Path, "write_text", unexpected_write)
+    agent._save_rejected_llm_diagnostic({}, "reason", "private text")
+    assert "private text" not in caplog.text
+
+
+def test_rejection_diagnostic_write_failure_is_visible_without_text(tmp_path, monkeypatch, caplog):
+    agent, _wallet = _agent(tmp_path)
+    monkeypatch.setenv("AGENT_REJECTED_LLM_DIAGNOSTICS_DIR", str(tmp_path / "diagnostics"))
+
+    def failed_write(*_args, **_kwargs):
+        raise OSError("private text must not leak through exception details")
+
+    monkeypatch.setattr(Path, "write_text", failed_write)
+    agent._save_rejected_llm_diagnostic({"request_id": "operator-request"}, "reason", "private text")
+    assert "diagnostic write failed" in caplog.text
+    assert "operator-request" in caplog.text
+    assert "OSError" in caplog.text
+    assert "private text" not in caplog.text
+
+
+def test_diagnostic_preserves_shap_and_source_rule_evidence(tmp_path):
+    agent, _wallet = _agent(tmp_path)
+    shap = agent._rejection_detail({}, "llm_answer_replaced_for_shap_unit_misinterpretation", "SHAP raises risk by 40%.")
+    assert shap["field"] == "risk.top_features.impact"
+    assert "raw output/margin" in shap["expected"]
+    assert "40%" in shap["detected"]
+    source = agent._rejection_detail({"sources": []}, "llm_answer_replaced_for_source_consistency", "According to retrieved documents.")
+    assert source["expected"] == []
+    assert "retrieved documents" in source["detected"]
 
 
 def test_scored_answer_replacement_when_above_threshold_text_says_below(tmp_path):
@@ -1237,7 +1369,8 @@ def test_scored_answer_labeled_numbers_do_not_cross_neighbor_fields(tmp_path):
 
     assert response.risk.status == "scored"
     assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
-    assert "LLM explanation" in response.answer
+    assert "LLM explanation" not in response.answer
+    assert "llm_answer_fallback" not in response.limitations
 
 
 def test_scored_answer_labeled_numbers_accept_comma_separated_fields(tmp_path):
@@ -1261,7 +1394,8 @@ def test_scored_answer_labeled_numbers_accept_comma_separated_fields(tmp_path):
 
     assert response.risk.status == "scored"
     assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
-    assert "LLM explanation" in response.answer
+    assert "LLM explanation" not in response.answer
+    assert "llm_answer_fallback" not in response.limitations
 
 
 def test_scored_answer_labeled_numbers_accept_russian_labels(tmp_path):
@@ -1284,7 +1418,8 @@ def test_scored_answer_labeled_numbers_accept_russian_labels(tmp_path):
     )
 
     assert "llm_answer_replaced_for_scored_risk_contradiction" not in response.limitations
-    assert "LLM explanation" in response.answer
+    assert "LLM explanation" not in response.answer
+    assert "llm_answer_fallback" not in response.limitations
 
 
 def test_scored_answer_replacement_checks_repeated_threshold_mentions(tmp_path):
@@ -1343,7 +1478,7 @@ def test_scored_answer_accepts_safe_not_proven_fraud_negation(tmp_path):
     )
 
     assert "forbidden_answer_phrase:proven fraud" not in response.validation_errors
-    assert "This wallet is not proven fraud." in response.answer
+    assert "llm_answer_fallback" not in response.limitations
 
 
 def test_scored_answer_replacement_when_russian_text_says_below_threshold(tmp_path):
@@ -1467,7 +1602,7 @@ def test_scored_answer_replacement_when_equal_threshold_text_says_above(tmp_path
     assert response.risk.score == 0.5
     assert response.risk.threshold == 0.5
     assert "llm_answer_replaced_for_scored_risk_contradiction" in response.limitations
-    assert "равен порогу" in response.answer
+    assert "равно порогу" in response.answer
 
 
 def test_methodology_explanation_with_wallet_uses_methodology_docs_without_scoring(tmp_path):

@@ -23,6 +23,26 @@ def _read_explanation(explanation_dir, request_id):
         return json.load(f)
 
 
+def test_explain_renders_legacy_rule_messages_without_unverified_age_claim(monkeypatch):
+    saved = {
+        "request_id": "legacy-rule-copy", "risk_class": "high_risk", "top_features": [],
+        "rule_triggers": [
+            {"rule": "wallet_age_lt_7_days", "feature": "wallet_age", "value": 10,
+             "message": "кошелёк создан менее недели назад (0 дней)"},
+            {"rule": "risky_tx_count_gt_20", "feature": "risky_tx_count", "value": 30,
+             "message": "обнаружено 30 рисковых транзакций"},
+        ],
+    }
+    monkeypatch.setattr(api, "_load_explanation_for_request", lambda _data: (None, saved, None))
+    monkeypatch.setattr(api, "_is_stale_explanation", lambda _exp: False)
+    body = api.app.test_client().post("/explain", json={"request_id": "legacy-rule-copy"}).get_json()
+    assert "кошелёк создан" not in body["explanation"]
+    assert "единицы возраста не подтверждены" in body["explanation"]
+    assert "risky_tx_count=30" in body["explanation"]
+    assert "кошелёк создан" not in body["rule_triggers"][0]["message"]
+    assert saved["rule_triggers"][0]["message"] == "кошелёк создан менее недели назад (0 дней)"
+
+
 def test_predict_returns_versioned_contract_and_does_not_overwrite_user_id(tmp_path, monkeypatch):
     api.app.config["EXPLANATION_DIR"] = str(tmp_path)
     monkeypatch.setattr(api, "log_prediction", lambda **_: None)

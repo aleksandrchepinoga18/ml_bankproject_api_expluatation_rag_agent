@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import json
+import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
@@ -15,6 +16,7 @@ import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from src.inference import build_model_input, get_rule_triggers, get_top_risk_factors
+from src.explanation_contract import EXPLANATION_EVIDENCE_CONTRACT, RULE_DEFINITIONS, feature_evidence
 from src.retrieval import DEFAULT_INDEX_PATH, LocalDenseRetriever, RetrievalHit
 
 
@@ -24,6 +26,7 @@ ADDRESS_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 INTENTS = {"score", "explain", "documents", "combined", "general", "unsupported"}
 ALLOWED_TOOL_NAMES = ("scoring", "shap", "retrieval")
 TOOL_EXECUTION_ORDER = {"scoring": 0, "shap": 1, "retrieval": 2}
+FORBIDDEN_ANSWER_PHRASES = ["proved fraud", "proven fraud", "доказано мошенничество", "credit approved", "credit declined"]
 
 
 class AgentState(TypedDict, total=False):
@@ -1289,7 +1292,7 @@ class WalletRiskAgent:
             state["llm_fallback_reason"] = "empty_response"
             self._mark_answer_fallback(state, "llm_answer_fallback_after_empty_response")
         state["answer"] = self._deterministic_answer(state)
-        if state.get("llm_fallback_reason") == "truncated":
+        if state.get("llm_fallback_reason") == "truncated" and state["risk"].status != "scored":
             state["answer"] = (
                 f"{state['answer']} LLM answer was truncated by generation limits; "
                 "returning structured tool output instead."
@@ -1308,8 +1311,12 @@ class WalletRiskAgent:
         state["_trace_detail"] = f"llm_answer_replaced:{reason}"
 
     def _accepted_llm_answer(self, state: dict[str, Any], text: str) -> str:
+        # Preserve original evidence for the existing final validation/fallback path.
+        lowered = text.lower()
+        if self._source_consistency_error(state, lowered) or self._final_answer_phrase_errors(lowered, FORBIDDEN_ANSWER_PHRASES):
+            return text.strip()
         if state.get("risk", RiskBlock(status="not_requested")).status == "scored":
-            return f"{self._deterministic_scored_answer(state)}\n\nLLM explanation:\n{text.strip()}"
+            return self._compose_scored_answer(state, text)
         return text.strip()
 
     def _save_rejected_llm_diagnostic(self, state: dict[str, Any], reason: str, rejected_text: str | None) -> None:
@@ -1328,6 +1335,7 @@ class WalletRiskAgent:
             "created_at_unix": time.time(),
             "intent": state.get("intent"),
             "replacement_reason": reason,
+            "rejection_detail": self._rejection_detail(state, reason, rejected_text),
             "llm": llm_payload,
             "rejected_text": rejected_text,
         }
@@ -1337,8 +1345,11 @@ class WalletRiskAgent:
             request_id = str(state.get("request_id") or "unknown")
             file_path = path / f"rejected_llm_{request_id}_{uuid.uuid4().hex[:8]}.json"
             file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        except OSError:
-            return
+        except OSError as exc:
+            logging.getLogger(__name__).warning(
+                "Rejected LLM diagnostic write failed: request_id=%s reason=%s error_type=%s",
+                state.get("request_id"), reason, type(exc).__name__,
+            )
 
     def _answer_replacement_reason(self, state: dict[str, Any], text: str) -> str | None:
         if self._violates_methodology_answer(state, text):
@@ -1450,49 +1461,159 @@ class WalletRiskAgent:
         return not (mentions_method_ref and mentions_method_content)
 
     def _violates_scored_boundary(self, state: dict[str, Any], text: str) -> bool:
+        return self._scored_boundary_detail(state, text) is not None
+
+    def _scored_boundary_detail(self, state: dict[str, Any], text: str) -> dict[str, Any] | None:
         risk: RiskBlock = state.get("risk", RiskBlock(status="not_requested"))
         if risk.status != "scored":
-            return False
-        lowered = text.lower()
+            return None
+        lowered = re.sub(r"(?<=\d),(?=\d)", ".", text.lower())
+        for detail in (self._feature_presence_detail(state, lowered), self._risk_label_detail(risk, lowered)):
+            if detail:
+                return detail
+        # Check explicit claims that scoring did not happen, not missing semantic documentation.
         insufficient_patterns = [
-            r"\binsufficient\s+(data|information)\b",
-            r"\bnot\s+enough\s+(data|information)\b",
-            r"\bmissing\s+(data|features)\b",
+            r"\b(?:insufficient|not\s+enough)\s+(?:data|information)\s+to\s+(?:calculate|compute)\s+(?:the\s+)?(?:risk\s+)?score\b",
             r"\bcannot\s+(assess|determine)\s+(the\s+)?risk\b",
             r"\bcan't\s+(assess|determine)\s+(the\s+)?risk\b",
             r"\bunable\s+to\s+(assess|determine)\s+(the\s+)?risk\b",
             r"\brisk\s+status\s*(is|:)?\s*insufficient\s+data\b",
             r"\bscore\s+is\s+unavailable\b",
         ]
-        if any(re.search(pattern, lowered) for pattern in insufficient_patterns):
-            return True
+        for pattern in insufficient_patterns:
+            match = re.search(pattern, lowered)
+            if match:
+                return {"rule": "scored_status", "field": "risk.status", "expected": "scored", "detected": match.group(0)}
 
         relation = self._score_threshold_relation(risk)
         if relation and self._text_contradicts_score_relation(lowered, relation):
-            return True
+            return {"rule": "score_threshold_relation", "field": "risk.score/risk.threshold", "expected": relation, "detected": text}
 
-        score_values = self._extract_labeled_numbers(lowered, ("risk score", "model score", "score", "скор"))
-        if risk.score is not None and any(
-            not self._same_reported_number(score_value, risk.score) for score_value in score_values
+        for field, actual, labels in (
+            ("risk.score", risk.score, ("risk score", "model score", "score", "скор", "оценка модели", "оценка")),
+            ("risk.threshold", risk.threshold, ("threshold", "порог", "пороге")),
+            ("risk.prediction", risk.prediction, ("prediction", "predicted class", "предсказание", "итоговый класс")),
         ):
-            return True
-
-        threshold_values = self._extract_labeled_numbers(lowered, ("threshold", "порог"))
-        if risk.threshold is not None and any(
-            not self._same_reported_number(threshold_value, risk.threshold) for threshold_value in threshold_values
-        ):
-            return True
-
-        prediction_values = self._extract_labeled_ints(lowered, ("prediction", "predicted class", "class", "класс"))
-        if risk.prediction is not None and any(value != risk.prediction for value in prediction_values):
-            return True
+            detail = self._reported_number_detail(lowered, field, actual, labels)
+            if detail:
+                return detail
+        for match in re.finditer(r"\b(?:class|класс)\s*[:=]\s*(\d+(?:\.\d+)?)", lowered):
+            if risk.prediction is not None and float(match.group(1)) != risk.prediction:
+                return {"rule": "reported_class", "field": "risk.prediction", "expected": risk.prediction, "detected": match.group(0)}
+        for segment in re.split(r"(?<=[.!?])\s+|[\n;]+", lowered):
+            match = re.match(
+                r"\s*(?:результат классификации\s*[-—:=]?\s*)?класс\s+(повышенного|пониженного)\s+риска\b",
+                segment,
+            )
+            if match and risk.prediction in (0, 1):
+                detected = 1 if match.group(1) == "повышенного" else 0
+                if detected != risk.prediction:
+                    return {"rule": "reported_class_label", "field": "risk.prediction", "expected": risk.prediction, "detected": match.group(0)}
+            english = re.search(
+                r"\b(?:predicted class|prediction|model predicts)\s*(?:is\s+|[:=]\s*)?"
+                r"(?:the\s+)?(?:class\s+)?(high(?:er)?|low(?:er)?)\s+risk\b", segment,
+            )
+            russian = re.search(
+                r"\b(?:предсказанный класс\s*(?:[-—:=]\s*)?|"
+                r"модель отнесла.{0,30}к классу\s+)(повышенного|пониженного)\s+риска\b", segment,
+            )
+            reported = english or russian
+            if reported and risk.prediction in (0, 1):
+                detected = int(reported.group(1) in {"high", "higher", "повышенного"})
+                if detected != risk.prediction:
+                    return {"rule": "reported_class_label", "field": "risk.prediction", "expected": risk.prediction, "detected": reported.group(0)}
 
         if self._text_claims_model_score_from_retrieval(lowered):
-            return True
+            return {"rule": "score_provenance", "field": "risk.score", "expected": "model output, not retrieval", "detected": text}
 
-        if self._text_has_bad_feature_or_rule_numbers(state, lowered):
-            return True
-        return False
+        return self._feature_or_rule_number_detail(state, lowered)
+
+    def _feature_facts(self, state: dict[str, Any]) -> list[dict[str, Any]]:
+        request = state.get("request")
+        rows = normalize_feature_rows(request.features) if isinstance(request, AgentRequest) else None
+        row = rows[0] if rows and len(rows) == 1 else None
+        return feature_evidence(state["risk"].top_features, row)
+
+    def _feature_presence_detail(self, state: dict[str, Any], text: str) -> dict[str, Any] | None:
+        facts = {item["feature"].lower(): item for item in self._feature_facts(state)}
+        if not facts:
+            return None
+        names = "|".join(re.escape(name) for name in sorted(facts, key=len, reverse=True))
+        mentions = list(re.finditer(rf"(?<!\w)(?:{names})(?!\w)", text))
+        absence = (
+            r"не было\s+(?:никаких\s+)?(?:значений|данных)|"
+            r"(?:значение|значения|данные)\s+(?:признака\s+)?(?:отсутств\w*|не\s+(?:передан\w*|задан\w*))|"
+            r"данных\s+нет|no\s+(?:value|values|data)\s+(?:was|were|is|are)\s+(?:provided|available)|"
+            r"(?:value|data)\s+(?:is|was)\s+missing"
+        )
+        for index, mention in enumerate(mentions):
+            end = mentions[index + 1].start() if index + 1 < len(mentions) else len(text)
+            fragment = text[mention.end():min(end, mention.end() + 280)]
+            fact = facts[mention.group(0)]
+            for match in re.finditer(absence, fragment):
+                preceding = text[max(0, mention.start() - 90):mention.end()] + fragment[:match.start()]
+                prefix = re.split(r"(?<=[.!?])\s+|;", preceding)[-1][-130:]
+                if re.search(r"(?:смысл|определение|интерпретация|meaning|definition)(?:\s+(?:этого|его|the|of))*\s*$", prefix):
+                    continue
+                if re.search(r"(?:нельзя|не следует)\s+(?:считать|говорить|утверждать)|cannot\s+(?:say|claim)|неизвестно.{0,40}(?:ли|означает)|not known whether", prefix):
+                    continue
+                raw_claim = bool(re.search(r"\b(?:исходн\w*|входн\w*|original|input)\b", prefix.replace(mention.group(0), "")))
+                status = fact["input_value_status"] if raw_claim else fact["model_value_status"]
+                if status == "present_numeric":
+                    return {
+                        "rule": "feature_value_presence", "field": f"risk.top_features[{fact['feature']}].value",
+                        "expected": {"status": status, "value": fact["input_value"] if raw_claim else fact["model_value"]},
+                        "detected": match.group(0),
+                    }
+        return None
+
+    def _risk_label_detail(self, risk: RiskBlock, text: str) -> dict[str, Any] | None:
+        # Detect explicit category assertions, not the mere occurrence of category words.
+        category = r"(?:средн\w*|умеренн\w*|повышенн\w*|пониженн\w*|высок\w*|низк\w*|medium|moderate|intermediate|high|low)"
+        patterns = (
+            rf"\b(?:уровень\s+риска|риск|risk(?:\s+level)?|predicted\s+class|класс(?:\s+риска)?)\s*(?:(?:is|was|является|считается|оценивается\s+как|находится\s+на)\s*|[-—:=]\s*)?(?P<label>{category})\b",
+            rf"\b(?P<label>{category})\s+(?:риск|risk)\b",
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                prefix = text[max(0, match.start() - 65):match.start()]
+                suffix = text[match.end():match.end() + 55]
+                if re.search(r"(?:не|not|не является|нельзя назвать|нельзя считать|не означает|не включает)\s*$", prefix):
+                    continue
+                if re.search(r"\bне\s+(?:вводит|выделяет|определяет|использует|предусматривает)\s*$|\bdoes not\s+(?:define|use|include)\s*$", prefix):
+                    continue
+                if re.search(r"(?:неизвестно|не подтверждено).{0,40}\bли\s*$|\b(?:если|if)\s*$", prefix):
+                    continue
+                if re.search(r"(?:вклад|shap|impact|contribution).{0,45}(?:в сторону|направлен|toward|target)", prefix):
+                    continue
+                if re.match(r"[\s\"'»”]*(?:как\s+отдельный\s+класс\s+)?(?:здесь\s+)?(?:нет\b|не\s+(?:предусмотрен|задан|определен|подтвержден)|is not defined)", suffix):
+                    continue
+                label = match.group("label")
+                if re.match(r"средн|умеренн|medium|moderate|intermediate", label):
+                    return {"rule": "unsupported_risk_scale", "field": "risk.prediction", "expected": {"classes": [0, 1], "prediction": risk.prediction}, "detected": match.group(0)}
+                predicted = 1 if re.match(r"повышенн|высок|high", label) else 0
+                if risk.prediction in (0, 1) and predicted != risk.prediction:
+                    return {"rule": "reported_class_label", "field": "risk.prediction", "expected": risk.prediction, "detected": match.group(0)}
+        return None
+
+    def _reported_number_detail(
+        self, text: str, field: str, actual: float | int | None, labels: tuple[str, ...],
+    ) -> dict[str, Any] | None:
+        if actual is None:
+            return None
+        label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+        negative = rf"\b(?:{label_pattern})\b\s*(?:is\s+|does\s+)?(?:not\s+(?:equal\s+to\s+)?|не\s+(?:равен\s+|равно\s+)?)(\d+(?:\.\d+)?)"
+        for match in re.finditer(negative, text):
+            value = float(match.group(1))
+            same = value == actual if field == "risk.prediction" else self._same_reported_number(value, actual)
+            if same:
+                return {"rule": "negated_actual_number", "field": field, "expected": actual, "detected": match.group(0)}
+        asserted_text = re.sub(negative, "", text)
+        for value in self._extract_labeled_numbers(asserted_text, labels):
+            same = value == actual if field == "risk.prediction" else self._same_reported_number(value, actual)
+            if not same:
+                return {"rule": "reported_class" if field == "risk.prediction" else "reported_number", "field": field, "expected": actual, "detected": value}
+        return None
 
     def _score_threshold_relation(self, risk: RiskBlock) -> str | None:
         if risk.score is None or risk.threshold is None:
@@ -1504,6 +1625,16 @@ class WalletRiskAgent:
         return "equal"
 
     def _text_contradicts_score_relation(self, lowered: str, relation: str) -> bool:
+        # Negated comparisons assert the complement, rather than the quoted relation.
+        # This deliberately covers a bounded set of explicit forms, not arbitrary natural language.
+        for pattern, excluded in (
+            (r"\b(?:not\s+(?:below|under)|не\s+ниже)\s+(?:the\s+)?(?:threshold|порога)\b", "below"),
+            (r"\b(?:not\s+(?:above|over)|не\s+выше)\s+(?:the\s+)?(?:threshold|порога)\b", "above"),
+            (r"\b(?:not\s+equal\s+to|не\s+равен|не\s+равно)\s+(?:the\s+)?(?:threshold|порогу)\b", "equal"),
+        ):
+            if re.search(pattern, lowered) and relation == excluded:
+                return True
+            lowered = re.sub(pattern, "", lowered)
         russian_says_above = "\u0432\u044b\u0448\u0435 \u043f\u043e\u0440\u043e\u0433\u0430" in lowered
         russian_says_below = "\u043d\u0438\u0436\u0435 \u043f\u043e\u0440\u043e\u0433\u0430" in lowered
         russian_says_equal = "\u0440\u0430\u0432\u0435\u043d \u043f\u043e\u0440\u043e\u0433\u0443" in lowered or "\u0440\u0430\u0432\u043d\u043e \u043f\u043e\u0440\u043e\u0433\u0443" in lowered
@@ -1547,8 +1678,10 @@ class WalletRiskAgent:
             "score",
             "\u0441\u043a\u043e\u0440",
             "\u043e\u0446\u0435\u043d\u043a\u0430",
+            "оценка модели",
             "threshold",
             "\u043f\u043e\u0440\u043e\u0433",
+            "пороге",
             "prediction",
             "predicted class",
             "class",
@@ -1566,7 +1699,7 @@ class WalletRiskAgent:
                     next_label = re.search(rf"\b(?:{field_label_pattern})\b", after)
                     if next_label is not None:
                         after = after[: next_label.start()]
-                    next_number = re.search(rf"^[^0-9]{{0,40}}{number_pattern}", after)
+                    next_number = re.search(rf"^[\s:=—–*`]*(?:(?:is|of|equals?|составляет|равен|равно)\s+)?{number_pattern}", after)
                     if next_number is not None:
                         number_span = (
                             sentence,
@@ -1582,7 +1715,7 @@ class WalletRiskAgent:
                     previous_labels = list(re.finditer(rf"\b(?:{field_label_pattern})\b", before))
                     if previous_labels:
                         before = before[previous_labels[-1].end() :]
-                    previous_number = re.search(rf"{number_pattern}[^a-z0-9]{{0,20}}$", before)
+                    previous_number = re.search(rf"{number_pattern}[\s:=—–*`]*$", before)
                     if previous_number is not None:
                         number_span = (sentence, previous_number.start(1), previous_number.end(1))
                         if number_span not in seen_spans:
@@ -1598,9 +1731,9 @@ class WalletRiskAgent:
         return abs(reported - actual) <= 5e-4
 
     def _text_claims_model_score_from_retrieval(self, lowered: str) -> bool:
-        score_terms = r"(model\s+)?(risk\s+)?score|lightgbm\s+score|скор"
+        score_terms = r"(model\s+)?(risk\s+)?score|lightgbm\s+score|скор|оценка модели"
         source_terms = r"synthetic(_demo)?|synthetic note|retrieval|document|note|документ|заметк"
-        causal_terms = r"based on|derived from|calculated from|computed from|основан|рассчитан|вычислен"
+        causal_terms = r"(?<!not )(?<!не )(?:based on|derived from|calculated from|computed from|основан|рассчитан|вычислен)"
         return bool(
             re.search(rf"({score_terms}).{{0,80}}({causal_terms}).{{0,80}}({source_terms})", lowered)
             or re.search(rf"({source_terms}).{{0,80}}({causal_terms}).{{0,80}}({score_terms})", lowered)
@@ -1611,6 +1744,12 @@ class WalletRiskAgent:
         if risk.status != "scored" or not risk.top_features:
             return False
         lowered = text.lower()
+        for segment in re.split(r"(?<=[.!?])\s+|[\n;]+", lowered):
+            if re.search(
+                r"\b(?:shap|impact|contribution|вклад)\b.{0,35}"
+                r"\b(?:is|are|это)\s+(?:a\s+)?(?:probabilit\w*|вероятност\w*)", segment,
+            ):
+                return True
         percentage_terms = (
             r"(?:\d+(?:[.,]\d+)?\s*%|percent(?:age)?\s+points?|percentage\s+points?|"
             r"процентн(?:ых|ые|ыми)?\s+пункт|в\s+процентах|как\s+процент)"
@@ -1634,11 +1773,23 @@ class WalletRiskAgent:
                 has_shap_context = shap_context
             else:
                 shap_context = False
-            if shap_context and re.search(percentage_terms, segment):
-                return True
+            if shap_context:
+                # Ignore explicitly denied unit claims; keep checking later clauses independently.
+                for clause in re.split(r"[;,]|\bbut\b|\bно\b", segment):
+                    if re.search(
+                        r"\b(?:not|не)\s+(?:(?:expressed|measured)\s+(?:in|as)\s+|"
+                        r"выража[ею]тся\s+в\s+|измеря[ею]тся\s+в\s+|является\s+|в\s+)?"
+                        r"(?:\d+(?:[.,]\d+)?\s*%|percent\w*|процент\w*)", clause,
+                    ):
+                        continue
+                    if re.search(percentage_terms, clause):
+                        return True
         return False
 
     def _text_has_bad_feature_or_rule_numbers(self, state: dict[str, Any], lowered: str) -> bool:
+        return self._feature_or_rule_number_detail(state, lowered) is not None
+
+    def _feature_or_rule_number_detail(self, state: dict[str, Any], lowered: str) -> dict[str, Any] | None:
         req: AgentRequest | None = state.get("request")
         feature_rows = normalize_feature_rows(req.features) if isinstance(req, AgentRequest) else None
         representative = feature_rows[0] if feature_rows else {}
@@ -1646,23 +1797,31 @@ class WalletRiskAgent:
         risky_count = representative.get("risky_tx_count")
         for match in re.finditer(r"\b([0-9]+)\s+(risky\s+transactions?|risky_tx_count)\b", lowered):
             if risky_count is None or int(match.group(1)) != int(float(risky_count)):
-                return True
+                return {"rule": "feature_number", "field": "risky_tx_count", "expected": risky_count, "detected": match.group(0)}
 
-        wallet_age_seconds = representative.get("wallet_age")
-        for match in re.finditer(r"\bwallet\s+age\b.{0,30}\b([0-9]+)\s+days?\b", lowered):
-            if wallet_age_seconds is None:
-                return True
-            actual_days = int(float(wallet_age_seconds) // 86400)
-            if int(match.group(1)) != actual_days:
-                return True
+        # A legacy numeric rule does not establish seconds or a real creation date.
+        age_definition = RULE_DEFINITIONS["wallet_age_lt_7_days"]
+        has_age = age_definition["feature"] in representative or any(
+            item.get("feature") == age_definition["feature"] for item in state["risk"].rule_triggers
+        )
+        if has_age and not age_definition["unit_verified"]:
+            age_claim = (
+                r"\bwallet\s+age\b.{0,30}\b[0-9]+\s+(?:days?|weeks?|seconds?)\b|"
+                r"кошел[её]к\s+(?:был\s+)?создан\b[^.!?\n]{0,50}(?:недел\w*|дн\w*|дней|день|час\w*)"
+            )
+            for match in re.finditer(age_claim, lowered):
+                prefix = lowered[max(0, match.start() - 70):match.start()]
+                if re.search(r"не подтверждено|не установлен|нельзя (?:считать|утверждать)|cannot claim", prefix):
+                    continue
+                return {"rule": "unverified_feature_unit", "field": age_definition["feature"], "expected": "unit unverified; only raw numeric rule is supported", "detected": match.group(0)}
 
         bad_day_comparison = re.search(
             r"\b([0-9]+)\s+days?\b.{0,30}\b(less\s+than|below|under|меньше|ниже)\b.{0,30}\b([0-9]+)\s+days?\b",
             lowered,
         )
         if bad_day_comparison and int(bad_day_comparison.group(1)) >= int(bad_day_comparison.group(3)):
-            return True
-        return False
+            return {"rule": "day_comparison", "field": "days", "expected": "left < right", "detected": bad_day_comparison.group(0)}
+        return None
 
     def _retry_prompt(self, state: dict[str, Any], previous_text: str) -> str:
         return (
@@ -1784,59 +1943,105 @@ class WalletRiskAgent:
 
     def _deterministic_scored_answer(self, state: dict[str, Any]) -> str:
         risk: RiskBlock = state["risk"]
-        relation = self._score_threshold_relation(risk)
-        if relation == "above":
-            relation_text = "выше порога"
-            class_text = "к классу повышенного риска"
-        elif relation == "below":
-            relation_text = "ниже порога"
-            class_text = "к классу ниже порога риска"
-        elif relation == "equal":
-            relation_text = "равен порогу"
-            class_text = "к пороговому классу риска"
-        else:
-            relation_text = "сравнение с порогом недоступно"
-            class_text = "к рассчитанному модельному классу"
-        score_text = self._format_readable_number(risk.score)
-        threshold_text = self._format_readable_number(risk.threshold)
-        parts = [
-            (
-                f"Оценка модели — {score_text} при пороге {threshold_text}. "
-                f"Значение {relation_text}, поэтому модель отнесла пример {class_text}."
-            )
-        ]
         if risk.top_features:
-            feature_lines = []
-            for item in risk.top_features[:3]:
-                feature_name = str(item.get("feature"))
-                feature_label = self._verified_feature_label(feature_name)
-                label_text = feature_label or feature_name
-                impact = float(item.get("impact", 0.0))
-                direction = "повышает raw output модели для риск-класса" if impact >= 0 else "снижает raw output модели для риск-класса"
-                feature_lines.append(
-                    "- "
-                    f"{label_text}: значение {item.get('value')}, "
-                    f"SHAP-вклад {self._format_readable_number(impact, digits=6)} "
-                    f"({direction}; единицы: raw output/margin LightGBM, не проценты и не вероятность)"
-                )
-            parts.append("Основные SHAP-факторы:\n" + "\n".join(feature_lines))
-        else:
-            parts.append("Основные SHAP-факторы: не рассчитаны или отсутствуют в structured response.")
-        findings = state.get("document_findings", [])
-        if findings:
-            refs = ", ".join(f"{item.document_id}/{item.chunk_id}" for item in findings)
-            parts.append(
-                "\u0421\u0432\u044f\u0437\u0430\u043d\u043d\u044b\u0435 "
-                f"\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b: {refs}."
+            explanation = (
+                "Показанные положительные SHAP-вклады направлены в сторону класса повышенного риска; "
+                "это часть объяснения модели. Модельные факторы доступны в подробностях; "
+                "их предметная интерпретация ограничена документацией исходных данных."
             )
-        parts.append(
-            "Ограничения: это результат модели, а не доказательство фрода, "
-            "не калиброванная вероятность и не решение одобрить или отказать. "
-            "SHAP показывает вклад признака в raw output/margin модели, а не причинное доказательство, "
-            "процент или вероятность. "
-            "Для demo/synthetic признаков и документов вывод предназначен только для проверки пайплайна."
+        else:
+            explanation = "SHAP-вклады для этого результата недоступны; подробности расчёта доступны отдельно."
+        return self._compose_scored_answer(state, explanation)
+
+    def _scored_result_text(self, risk: RiskBlock) -> str:
+        relation_text = {
+            "above": "выше порога", "below": "ниже порога", "equal": "равно порогу",
+        }.get(self._score_threshold_relation(risk) or "", "сравнение с порогом недоступно")
+        # Binary contract: class 1 is risk_class_1; score >= threshold selects it.
+        class_text = self._prediction_label(risk.prediction)
+        return (
+            f"Оценка модели — {self._format_score_number(risk.score)} при пороге "
+            f"{self._format_score_number(risk.threshold)}: значение {relation_text}. "
+            f"Результат классификации — {class_text}."
         )
+
+    def _format_score_number(self, value: float | None) -> str:
+        if value is None:
+            return "недоступна"
+        # Preserve the supplied float's decimal representation; pad, never round.
+        rendered = str(value)
+        if "." in rendered and "e" not in rendered.lower():
+            whole, fraction = rendered.split(".", 1)
+            rendered = whole + "." + fraction.ljust(3, "0")
+        return rendered.replace(".", ",")
+
+    def _compose_scored_answer(self, state: dict[str, Any], explanation: str) -> str:
+        header = self._scored_result_text(state["risk"])
+        limitation = (
+            "Это модельная оценка, не калиброванная вероятность мошенничества и не решение одобрить или отказать."
+        )
+        demo_warning = "Документы с пометкой synthetic_demo — демонстрационные материалы, не независимое доказательство."
+        has_demo_sources = any(item.source_kind == "synthetic_demo" for item in state.get("sources", []))
+        # Rendering only: code-owned summaries/disclaimers are not repeated in the body.
+        # This never rejects an answer; absence of numbers or warnings is valid.
+        owned = {
+            " ".join(sentence.split()).casefold()
+            for sentence in re.split(r"(?<=[.!?])\s+", header + " " + limitation + " " + demo_warning)
+        }
+        body = []
+        for paragraph in explanation.strip().splitlines():
+            if paragraph.lstrip().startswith("#"):
+                paragraph = paragraph.lstrip().lstrip("#").strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", paragraph):
+                normalized = " ".join(sentence.split()).casefold()
+                if not normalized or normalized in owned:
+                    continue
+                if re.fullmatch(
+                    r"(?:score|threshold|prediction|class|скор|порог|класс)\s*[:=]\s*\d+(?:[.,]\d+)?\.?",
+                    normalized,
+                ):
+                    continue
+                if re.match(r"^(?:это|оценка(?: модели)?|результат модели|this|it|(?:model )?score)\b", normalized) and re.search(
+                    r"\b(?:не\s+(?:является\s+)?(?:калиброванн|доказательств)|"
+                    r"not\s+(?:a\s+)?(?:calibrated\s+probability|proof\s+of\s+fraud))", normalized,
+                ):
+                    continue
+                body.append(sentence.strip())
+        parts = [header]
+        if body:
+            parts.append(" ".join(body))
+        parts.append(limitation)
+        if has_demo_sources:
+            parts.append(demo_warning)
         return "\n".join(parts)
+
+    def _prediction_label(self, prediction: int | None) -> str:
+        if prediction == 1:
+            return "класс повышенного риска"
+        if prediction == 0:
+            return "класс пониженного риска"
+        return "класс не указан в результате модели"
+
+    def _rejection_detail(self, state: dict[str, Any], reason: str, text: str) -> dict[str, Any]:
+        if reason == "llm_answer_replaced_for_scored_risk_contradiction":
+            detail = self._scored_boundary_detail(state, text)
+            if detail:
+                return detail
+        if reason == "llm_answer_replaced_for_shap_unit_misinterpretation":
+            return {"rule": "shap_units", "field": "risk.top_features.impact", "expected": "raw output/margin LightGBM, not percentages or probabilities", "detected": text}
+        if reason == "llm_answer_replaced_for_source_consistency":
+            return {"rule": "source_consistency", "field": "sources", "expected": [item.model_dump() for item in state.get("sources", [])], "detected": text}
+        first_reason = reason.split(",", 1)[0]
+        if first_reason.startswith("forbidden_answer_phrase:"):
+            return {"rule": "forbidden_answer_phrase", "field": "answer", "expected": "phrase absent", "detected": first_reason.split(":", 1)[1]}
+        if first_reason.startswith(("missing_chunk:", "unsupported_claim:", "foreign_wallet_source:")):
+            return {"rule": first_reason.split(":", 1)[0], "field": "sources/document_findings", "expected": "supported chunk belonging to the requested wallet", "detected": first_reason.split(":", 1)[1]}
+        if reason in {"llm_answer_replaced_for_insufficient_data", "llm_answer_replaced_for_not_requested_risk"}:
+            risk = state.get("risk", RiskBlock(status="not_requested"))
+            return {"rule": "risk_status_boundary", "field": "risk.status", "expected": risk.status, "detected": text}
+        if reason == "llm_answer_replaced_for_methodology_answer":
+            return {"rule": "methodology_grounding", "field": "sources", "expected": [item.document_id for item in state.get("sources", [])], "detected": text}
+        return {"rule": reason, "field": "answer", "expected": "consistent with validated tool output and safety rules", "detected": text}
 
     def _format_readable_number(self, value: float | None, *, digits: int = 3) -> str:
         if value is None:
@@ -1854,6 +2059,7 @@ class WalletRiskAgent:
         return None
 
     def _prompt(self, state: dict[str, Any]) -> str:
+        risk: RiskBlock = state["risk"]
         payload = {
             "question": state["request"].question,
             "intent": state["intent"],
@@ -1862,17 +2068,59 @@ class WalletRiskAgent:
             "document_findings": [item.model_dump() for item in state.get("document_findings", [])],
             "sources": [item.model_dump() for item in state.get("sources", [])],
             "limitations": state.get("limitations", []),
+            "feature_semantics": {
+                "fields": [item.get("feature") for item in state["risk"].top_features],
+                "definition_status": "No verified field definitions in the current feature dictionary",
+                "units_and_zero_meaning": "Not established; do not infer them from names or zero values",
+            },
+            "feature_evidence": self._feature_facts(state),
+            "evidence_contract": EXPLANATION_EVIDENCE_CONTRACT,
+            "classification_contract": {
+                "kind": "binary", "classes": {"0": "lower_risk", "1": "high_risk"},
+                "prediction": risk.prediction, "score_threshold_relation": self._score_threshold_relation(risk),
+                "additional_risk_levels": None, "score_is_calibrated_probability": False,
+            },
+            "rule_evidence": [
+                {"rule": item.get("rule"), "feature": item.get("feature"), "value": item.get("value"),
+                 "contract": RULE_DEFINITIONS.get(str(item.get("rule")), {"evidence": "unverified_rule_definition"})}
+                for item in risk.rule_triggers
+            ],
+            "input_evidence": {
+                "origin": "caller_supplied_features", "independently_verified_wallet_evidence": False,
+                "provenance_note": "A client-declared note describes only the supplied example; otherwise input provenance is unknown. Wallet origin is not established",
+            },
         }
         return (
             "You are a wallet risk analyst. Tools have already been selected and validated by "
             "the agent router; do not call or invent tools. Use only this JSON tool output. "
-            "Mention document_id/chunk_id for document claims. Mark synthetic_demo as demo only. "
+            "For document-only answers mention document_id/chunk_id for document claims and mark synthetic_demo as demo only. "
             "If risk.status is insufficient_data, explicitly say there is not enough data to assess risk "
             "and do not claim low risk, no fraud, or absence of fraud. "
             "If risk.status is not_requested, say risk assessment was not requested; do not say data is "
             "insufficient or missing. "
             "If risk.status is scored, treat the structured risk.score, risk.threshold, risk.prediction, "
             "and their above/below/equal relation as authoritative. "
+            "For scored answers write only a concise free-form explanation in Russian, using your own wording. "
+            "Code adds the score, threshold, predicted class, comparison, limitations and any known demo warning; "
+            "do not repeat that summary or add headings/disclaimers. You need not mention numbers or warnings. "
+            "Explain only supported model contributions, not causality or the complete model from a few factors. "
+            "Consult feature_semantics: unknown definitions, units and zero meanings must remain unknown. "
+            "Read feature_evidence separately: model_value is the actual model input, input_value is the "
+            "original caller input, shap_contribution is an attribution, and semantics is documentation status. "
+            "A present numeric zero is a value, never a missing value; unknown zero meaning does not mean absent data. "
+            "Follow evidence_contract: zero does not establish inactivity or absence of any event without verified semantics. "
+            "Use only the binary classification_contract for the model's result; do not introduce a medium, "
+            "moderate or other unsupported category. You may explain or negate category names in your own words. "
+            "rule_evidence contains computed checks on supplied data, not independent blockchain observations "
+            "and do not establish any effect on the model score. Attribute a feature's contribution only to its "
+            "own SHAP evidence, including when that feature also triggers a rule. Do not combine separate rule "
+            "checks with SHAP factors as joint reasons for the score. Respect each rule's unit_verified status; "
+            "legacy rule names do not verify units. "
+            "A client-declared synthetic/demo note describes the supplied input example only; it does not "
+            "establish a synthetic/demo wallet. Neither zeros nor other feature values establish wallet origin. "
+            "You may mention feature names, deposits, zeros or technical terms when relevant; their presence "
+            "does not establish any undocumented meaning. Detailed values are displayed by the client. "
+            "Do not infer demo provenance for user features; declared input provenance is displayed by the client. "
             "If risk.top_features are present, SHAP impact values are raw LightGBM output/margin "
             "contributions from shap.TreeExplainer(model), not percentages, probabilities, or percentage points; "
             "do not convert or rename them unless a verified transform is provided. "
@@ -1887,7 +2135,7 @@ class WalletRiskAgent:
         if errors:
             state["validation_errors"].extend(errors)
             state["data_status"] = "partial"
-        forbidden = ["proved fraud", "proven fraud", "доказано мошенничество", "credit approved", "credit declined"]
+        forbidden = FORBIDDEN_ANSWER_PHRASES
         answer_lower = state.get("answer", "").lower()
         for phrase in forbidden:
             if self._contains_forbidden_final_phrase(answer_lower, phrase):
@@ -1968,11 +2216,11 @@ class WalletRiskAgent:
         return errors
 
     def _contains_forbidden_final_phrase(self, answer_lower: str, phrase: str) -> bool:
-        if phrase == "proven fraud":
-            return bool(re.search(r"(?<!\bnot\s)(?<!\bnot\sbe\s)\bproven fraud\b", answer_lower))
-        if phrase == "proved fraud":
-            return bool(re.search(r"(?<!\bnot\s)(?<!\bnot\sbe\s)\bproved fraud\b", answer_lower))
-        return phrase in answer_lower
+        for match in re.finditer(rf"\b{re.escape(phrase)}\b", answer_lower):
+            prefix = answer_lower[:match.start()]
+            if not re.search(r"\b(?:not(?:\s+be)?|не)\s+$", prefix):
+                return True
+        return False
 
     def _source_consistency_error(self, state: dict[str, Any], answer_lower: str) -> str | None:
         if state.get("sources"):

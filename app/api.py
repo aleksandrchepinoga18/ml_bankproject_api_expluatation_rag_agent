@@ -320,8 +320,15 @@ def explain():
         return _stale_response(exp)
 
     rule_reasons = []
+    rule_triggers = []
     triggered_features = set()
     for trigger in exp.get("rule_triggers", []):
+        current = next((
+            item for item in get_rule_triggers({trigger.get("feature"): trigger.get("value")})
+            if item["rule"] == trigger.get("rule")
+        ), trigger)
+        trigger = dict(current)
+        rule_triggers.append(trigger)
         message = trigger.get("message")
         if message:
             rule_reasons.append(message)
@@ -335,11 +342,9 @@ def explain():
         val = feat.get("value")
         if val is None or name in triggered_features:
             continue
-        if name == "risky_tx_count" and val > 20:
-            shap_reasons.append(f"обнаружено {int(val)} рисковых транзакций")
-        elif name == "wallet_age" and val < 604800:
-            days = max(0, int(val // 86400))
-            shap_reasons.append(f"кошелёк создан всего {days} дней назад")
+        input_rules = get_rule_triggers({name: val})
+        if input_rules:
+            shap_reasons.extend(item["message"] for item in input_rules)
         else:
             shap_reasons.append(f"признак {name} повысил оценку риска")
 
@@ -372,7 +377,7 @@ def explain():
             "threshold": exp.get("threshold"),
             "model_class": exp.get("model_class"),
             "top_features": exp.get("top_features", []),
-            "rule_triggers": exp.get("rule_triggers", []),
+            "rule_triggers": rule_triggers,
             "explanation": text,
         }
     )

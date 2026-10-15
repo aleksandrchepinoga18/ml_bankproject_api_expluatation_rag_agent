@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--features-file", type=Path, help="JSON file with a feature object or {'features': {...}}.")
     parser.add_argument("--top-k", type=int, default=3, help="Number of retrieval hits requested from the API.")
     parser.add_argument("--trace", action="store_true", help="Print detailed Agent trace.")
+    parser.add_argument("--details", action="store_true", help="Print structured risk, SHAP, sources and diagnostics.")
     parser.add_argument("--save-json", type=Path, help="Save raw API JSON response to this file.")
     parser.add_argument("--timeout", type=float, default=180.0, help="HTTP timeout in seconds.")
     return parser.parse_args()
@@ -62,6 +63,9 @@ def build_payload(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]
         payload["wallet_address"] = args.wallet_address
     if features is not None:
         payload["features"] = features
+    if features_note:
+        question_field = "message" if args.endpoint == "chat" else "question"
+        payload[question_field] += "\n\nInput provenance declared by client (not independent evidence): " + features_note
     return payload, features_note
 
 
@@ -206,19 +210,16 @@ def summarize_state(analysis: dict[str, Any]) -> str:
 def print_question_answer(question: str, answer: str, features_file: Path | None, features_note: str | None) -> None:
     print_section("Question")
     print(question)
-    if features_file:
+    if features_file and features_note:
         print_section("Feature Input")
-        print(f"features_file: {features_file}")
-        if features_note:
-            print(f"origin: {features_note}")
-        else:
-            print("origin: user-supplied feature file; provenance not declared in the file")
+        print(f"origin: {features_note}")
     print_section("Agent Answer")
     print(answer or "-")
 
 
 def print_agent_summary(analysis: dict[str, Any]) -> None:
     print_section("Agent Routing")
+    print(f"request_id: {fmt_value(analysis.get('request_id'))}")
     print(f"state: {summarize_state(analysis)}")
     print(f"intent: {fmt_value(analysis.get('intent'))}")
     print(f"execution_mode: {fmt_value(analysis.get('execution_mode'))}")
@@ -244,6 +245,8 @@ def print_risk(analysis: dict[str, Any]) -> None:
         return
 
     print_section("LightGBM Result")
+    print("structured risk:")
+    print(json.dumps(risk, ensure_ascii=False, indent=2))
     print(f"risk.status: {fmt_value(risk.get('status'))}")
     print(f"score: {fmt_value(risk.get('score'))}")
     print(f"threshold: {fmt_value(risk.get('threshold'))}")
@@ -251,11 +254,18 @@ def print_risk(analysis: dict[str, Any]) -> None:
     print(f"prediction: {fmt_value(risk.get('prediction'))}")
     print(f"model_version: {fmt_value(risk.get('model_version'))}")
     print(f"schema_version: {fmt_value(risk.get('schema_version'))}")
+    print(f"agent_version: {fmt_value(analysis.get('agent_version'))}")
+    print(f"prompt_version: {fmt_value(analysis.get('prompt_version'))}")
+    print(f"data_status: {fmt_value(analysis.get('data_status'))}")
     print(f"reason: {fmt_value(risk.get('reason'))}")
 
     if top_features:
         print()
-        print("Top features:")
+        print("Selected positive SHAP contributions (not a complete explanation):")
+        print("SHAP units: raw output/margin LightGBM; not percentages or probabilities")
+        print("Feature semantics: current dictionary does not verify field definitions, feature units or zero meanings.")
+        print("A numeric zero is a present model input value; unknown meaning is not missing data. SHAP impact is separate.")
+        print("Rule triggers describe input checks; legacy rule names do not establish time units or real wallet events.")
         for item in top_features[:8]:
             dictionary_note = feature_dictionary_note(str(item.get("feature")))
             suffix = f", dictionary_note={dictionary_note}" if dictionary_note else ""
@@ -373,18 +383,25 @@ def main() -> int:
         client_context_path = None
 
     print_question_answer(args.question, answer, args.features_file, features_note)
-    print_agent_summary(analysis)
-    print_risk(analysis)
-    print_sources(analysis)
-    print_llm(analysis)
-    print_limitations_and_tools(analysis)
+    if args.details:
+        if args.features_file:
+            print(f"features_file: {args.features_file}")
+        print_agent_summary(analysis)
+        print_risk(analysis)
+        print_sources(analysis)
+        print_llm(analysis)
+        print_limitations_and_tools(analysis)
+    elif final_answer_validation_errors(analysis):
+        print("Внимание: итоговый ответ не прошёл проверку; причины доступны с --details.")
+    elif replacement_reasons(analysis):
+        print("Текст LLM заменён резервным ответом; причины доступны с --details.")
     if args.trace:
         print_trace(analysis)
     print_section("Request Time")
     print(f"{elapsed_ms:.1f} ms")
-    if args.save_json:
+    if args.save_json and args.details:
         print(f"raw_json: {args.save_json}")
-    if client_context_path:
+    if client_context_path and args.details:
         print(f"client_context_json: {client_context_path}")
     return 0
 

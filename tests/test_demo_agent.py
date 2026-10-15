@@ -1,4 +1,10 @@
 import json
+import sys
+from argparse import Namespace
+
+import pytest
+
+from scripts import demo_agent
 
 from scripts.demo_agent import (
     final_answer_validation_errors,
@@ -74,3 +80,94 @@ def test_demo_client_context_preserves_demo_feature_warning(tmp_path):
     assert context_path is not None
     context = json.loads(context_path.read_text(encoding="utf-8"))
     assert context["features_origin_warning"] == "synthetic demo features; not production evidence"
+
+
+@pytest.mark.parametrize("details,trace", [(False, False), (True, False), (False, True), (True, True)])
+def test_demo_display_modes_keep_raw_response_unchanged(tmp_path, monkeypatch, capsys, details, trace):
+    body = {
+        "answer": "Оценка модели — 0,359 при пороге 0,344. Класс повышенного риска.",
+        "agent_version": "test_agent", "prompt_version": "test_prompt", "data_status": "partial",
+        "risk": {
+            "status": "scored", "score": 0.35894730197831315, "threshold": 0.34438552759270996,
+            "prediction": 1, "model_version": "test_model", "schema_version": "test_schema",
+            "top_features": [{"feature": "time_since_last_liquidated", "value": 0, "impact": 0.4586088125}],
+        },
+        "sources": [{"document_id": "doc", "chunk_id": "chunk", "source_kind": "derived_data"}],
+        "llm": {"status": "ok", "model": "test_llm"},
+        "limitations": ["llm_answer_replaced_for_scored_risk_contradiction"],
+        "validation_errors": ["llm_answer_replaced_for_scored_risk_contradiction"],
+        "trace": [{"step": 1, "node": "build_answer", "action": "node", "status": "ok", "detail": "trace_only"}],
+    }
+    features = tmp_path / "features.json"
+    features.write_text(json.dumps({"features": {}, "note": "synthetic demo input"}), encoding="utf-8")
+    raw = tmp_path / "raw.json"
+    argv = ["demo_agent.py", "--question", "Объясни оценку", "--features-file", str(features), "--save-json", str(raw)]
+    if details:
+        argv.append("--details")
+    if trace:
+        argv.append("--trace")
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(demo_agent, "request_agent", lambda *_args: (body, 125.0))
+
+    assert demo_agent.main() == 0
+    output = capsys.readouterr().out
+    assert "Объясни оценку" in output
+    assert body["answer"] in output
+    assert "synthetic demo input" in output
+    assert "125.0 ms" in output
+    assert ("LightGBM Result" in output) is details
+    assert ("raw output/margin LightGBM" in output) is details
+    assert ("does not verify field definitions" in output) is details
+    assert ("time_since_last_liquidated" in output) is details
+    assert ("test_model" in output) is details
+    assert ("test_llm" in output) is details
+    assert ("doc/chunk" in output) is details
+    assert ("llm_answer_replaced_for_scored_risk_contradiction" in output) is details
+    assert ("trace_only" in output) is trace
+    if not details:
+        assert "Текст LLM заменён" in output
+    assert json.loads(raw.read_text(encoding="utf-8")) == body
+    assert json.loads(raw.with_suffix(".json.client_context.json").read_text(encoding="utf-8"))["features_origin_warning"] == "synthetic demo input"
+
+
+def test_default_demo_does_not_invent_provenance(tmp_path, monkeypatch, capsys):
+    features = tmp_path / "real.json"
+    features.write_text('{"wallet_age": 100}', encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["demo_agent.py", "--question", "Оценка?", "--features-file", str(features)])
+    monkeypatch.setattr(demo_agent, "request_agent", lambda *_args: ({"answer": "Краткий ответ."}, 5.0))
+
+    assert demo_agent.main() == 0
+    output = capsys.readouterr().out
+    assert "Feature Input" not in output
+    assert "synthetic" not in output
+    assert "demo" not in output
+    assert "LLM" not in output
+
+
+def test_default_demo_surfaces_final_validation_failure(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["demo_agent.py", "--question", "Оценка?"])
+    body = {"answer": "Ответ.", "validation_errors": ["missing_chunk:missing"]}
+    monkeypatch.setattr(demo_agent, "request_agent", lambda *_args: (body, 5.0))
+    demo_agent.main()
+    assert "итоговый ответ не прошёл проверку" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("endpoint,field", [("analyze", "question"), ("chat", "message")])
+def test_declared_demo_origin_reaches_llm_through_existing_request_field(tmp_path, endpoint, field):
+    path = tmp_path / "features.json"
+    path.write_text(json.dumps({"note": "Synthetic/demo input, not real wallet evidence", "features": {"wallet_age": 10}}), encoding="utf-8")
+    args = Namespace(endpoint=endpoint, question="Поясни результат", top_k=3, wallet_address=None, features_file=path)
+    payload, note = demo_agent.build_payload(args)
+    assert payload[field].startswith(args.question)
+    assert note in payload[field]
+    assert set(payload) == {field, "top_k", "features"}
+    assert payload["features"] == {"wallet_age": 10}
+
+
+def test_input_without_declared_provenance_does_not_get_demo_context(tmp_path):
+    path = tmp_path / "features.json"
+    path.write_text('{"features": {"metric": 0}}', encoding="utf-8")
+    args = Namespace(endpoint="analyze", question="Поясни результат", top_k=3, wallet_address=None, features_file=path)
+    payload, note = demo_agent.build_payload(args)
+    assert note is None
+    assert payload["question"] == args.question

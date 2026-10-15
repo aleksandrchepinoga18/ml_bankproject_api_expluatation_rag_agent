@@ -835,3 +835,159 @@ Validation:
 - `.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests` -> `All checks passed!`.
 - `.venv\Scripts\python.exe -m mypy app src scripts monitoring tests` -> `Success: no issues found in 52 source files` plus the existing unchecked untyped test note.
 - `.venv\Scripts\python.exe -m pytest -q` -> `107 passed, 929 warnings`.
+
+## User Output And Rejection Diagnostics On 2026-10-15
+
+Scope:
+
+- Changed only user answer presentation, demo CLI display, local rejection diagnostics, targeted tests and documentation.
+- Graph, scoring, models, data, corpus, index and MLflow were not changed. Public API schema and raw JSON saving remain unchanged.
+- Nothing was installed; commit/push were not performed.
+
+Changes:
+
+- Default demo output contains question, declared feature-origin note when supplied, concise answer and request time. A brief fallback/final-validation notice remains visible.
+- Added --details for full structured risk, selected SHAP values and raw output/margin units, sources, versions, LLM and validation diagnostics. --trace remains independent.
+- Scored answer reports score/threshold and the class from structured prediction; equality to threshold maps to class 1 under the existing binary scoring contract.
+- Positive SHAP contributions are explicitly only part of the explanation. Unknown feature meanings, units and zero semantics are not expanded. No unconditional demo provenance is added to arbitrary inputs.
+- Accepted LLM answers contain one explanation without a deterministic prefix or technical LLM tail. A presentation guard and aligned prompt enforce the concise Russian format while preserving numeric, source, SHAP-unit and final safety checks. Nonconforming text uses the explicitly marked safe fallback; LLM generation is still enabled.
+- Opt-in local rejection files now contain rejection_detail with rule, field, expected and detected value/fragment. No API fields were added. Write failure logs request ID, reason and exception type without rejected text or exception message.
+- Added target coverage for display flag combinations, unchanged raw JSON, real-input provenance, accepted concise LLM output, prediction at threshold, unknown semantics, numeric subreasons, diagnostics disabled by default and safe write-error logging. Existing copy assertions were updated for the new presentation contract.
+- Expected default and --details examples: docs/user_output_examples.md. These are illustrative layouts based on the saved result, not a new API run.
+
+Validation:
+
+- Targeted tests: not_run (user instruction).
+- Full tests: not_run (user instruction).
+- Ruff: not_run (user instruction).
+- mypy: not_run (user instruction).
+- Docker/API requests: not_run (user instruction).
+- Manual source/diff review only; no inference or training was run.
+
+## Free Scored Explanations Without Phrase Matching On 2026-10-15
+
+Scope:
+
+- Removed _scored_presentation_issue and the scored_presentation fallback branch entirely, including mandatory wording, technical/name/demo word bans and formatting-based rejection.
+- Graph, scoring, model, data, corpus, index, API schema and MLflow were not changed. No install, commit or push.
+
+Responsibility split:
+
+- Code composes the authoritative score, threshold, predicted class and comparison, then adds its own limitation. Numeric display preserves the supplied float representation without rounding it to three decimals.
+- LLM supplies a free explanation. Missing numbers, missing warnings, synonyms, Markdown and technical terms are not rejection conditions. Prompt ownership instructions replace mandatory quoted phrases.
+- Code removes echoes of its own summary/limitation for display only. Final safety/source evidence is preserved before display cleanup; formatting cleanup cannot hide a known violation.
+- Demo source warning is added from explicit synthetic_demo source metadata. Feature-input provenance remains a client-owned note from the declared feature file; arbitrary inputs are not labeled demo.
+- Unknown feature definitions, feature units and zero semantics are provided as LLM context and shown in --details. No deposit/zero word bans remain.
+
+Bounded factual checks:
+
+- Kept rejection/fallback for explicitly wrong score, threshold, numeric or named predicted class, threshold comparison, false source claims, score attributed to documents and wrong SHAP units.
+- Removed generic missing-data triggers from scored checks when they do not explicitly deny scoring. Tightened labeled-number extraction to avoid treating an unrelated nearby number as a claimed score/class.
+- Added bounded handling of negated numeric claims, comparisons, document attribution, SHAP units and final forbidden phrases. Mentioning SHAP class 1 as an explanation target is not by itself a predicted-class claim.
+- These are limited regex-based checks of explicit forms, not a complete truth verifier. No claim of complete semantic validation or measured acceptance rate is made.
+- Opt-in local rejection diagnostics and write-failure operator warning remain available. Historical saved scored_presentation responses are unchanged.
+
+Tests and review:
+
+- Added tests/test_scored_explanations.py with varied scores, thresholds and feature names: free wording and omitted boilerplate, correct negations, unknown zero meaning, actual contradictions, code-owned summary/limitation deduplication, conditional demo-source warning and safety before rendering cleanup.
+- Updated existing acceptance assertions that previously expected stylistic fallback. Added a feature-semantics details assertion.
+- Updated expected-output documentation; examples are illustrative, not new API results.
+- Targeted/full tests: not_run (user instruction).
+- Ruff: not_run (user instruction).
+- mypy: not_run (user instruction).
+- Docker/API requests: not_run (user instruction).
+- Manual source/diff review only. Turn-specific diff: docs/scored_explanation_changes_2026-10-15.patch.
+
+## Feature Presence, Binary Classes And Rule Evidence On 2026-10-15
+
+Diagnosis of results/demo_agent_explain_without_style_guard_2026-10-15.json:
+
+- Request 9c7df72638784ffeab647fea0e5dcb8a accepted an LLM explanation with absent-value claims despite three numeric top_features.value zeros. Unknown definitions/units had not been separated clearly enough from data availability or SHAP attribution.
+- It also called the result medium risk despite prediction=1 and the binary scoring contract. Existing checks covered numbers and selected binary labels but not an explicitly invented middle category.
+- risky_tx_count=30 and wallet_age=10 come from docs/demo_features_valid.json, whose note explicitly declares synthetic/demo input. The note previously stayed in the client display/sidecar and never reached the LLM.
+- rule_triggers were generated by get_rule_triggers in src/inference.py, called from the agent SHAP tool and the prediction API, not invented by the LLM. The count predicate is >20. The age predicate is <604800 and its previous message divided by 86400, assuming seconds without a verified source-unit contract. Data preparation reads precomputed parquet fields; the dictionary does not establish wallet_age units. Legacy /explain duplicated the same age conversion.
+
+Changes:
+
+- Added src/explanation_contract.py for internal feature-presence/attribution evidence and rule definitions. Numeric zero remains present_numeric, independently of unknown field meaning. Original input availability is separate from the post-preprocessing model value, including an imputed model zero.
+- LLM context now separates feature_evidence, classification_contract, rule_evidence and input_evidence. It explicitly describes binary classes, no additional configured risk levels, unknown feature units/zero meanings and rule predicates as caller-input checks rather than independently verified wallet history.
+- Added bounded checks of explicit named-feature absence claims and risk-category assignments, with negation/uncertainty handling. They apply to arbitrary feature names and numeric values; no mandatory wording, technical-word bans or per-demo-feature rejection rules were introduced. Existing numeric, source and SHAP-unit checks remain.
+- Kept numeric rule predicates and identifiers unchanged. Reworded count/age rule messages to report input checks, removed unverified age-to-days claims, and shared that interpretation with legacy /explain without rewriting saved explanation files. Public rule keys and response schemas remain unchanged.
+- Demo client forwards a declared provenance note through the existing question/message field, while displaying the original user question. No new API request field was added. Inputs without a note are not labeled demo. Details explain that numeric zero is a value and rule names are not proof of time units/events.
+- Updated the old age-diagnostic expectation: an age-in-days claim is now unverified, not a verified conversion yielding zero days.
+
+Regression coverage added/updated:
+
+- Numeric zero/nonzero vs null/NaN, original missing input vs model/imputed zero, and SHAP vs feature units.
+- Absent-value contradictions for different feature names; acceptable unknown-zero-meaning warnings and negations.
+- Unsupported medium/moderate category assertions across different scores/predictions; acceptable negations and contribution targets.
+- Demo input origin, numeric rule boundaries, legacy rule-message rendering, rule-context provenance, client provenance forwarding and no invented demo origin.
+- These checks cover explicit forms and remain heuristics, not complete natural-language truth validation.
+
+Validation:
+
+- Targeted and full tests: not_run (user instruction).
+- Ruff: not_run (user instruction).
+- mypy: not_run (user instruction).
+- Docker, API requests and Ollama requests: not_run (user instruction).
+- Manual code and diff review only. Graph, model, training, dataset, corpus, index, MLflow and API schema were not changed. No commit/push.
+
+Commands for the user, from ml-project (not executed):
+
+- .\.venv\Scripts\python.exe -m pytest tests/test_explanation_contract.py tests/test_scored_explanations.py tests/test_agent.py tests/test_demo_agent.py tests/test_scoring_contract.py -q
+- .\.venv\Scripts\python.exe -m ruff check app src scripts monitoring tests
+- .\.venv\Scripts\python.exe -m mypy app src scripts monitoring tests
+
+## Evidence Scope Clarification On 2026-10-15
+
+- Latest saved live result: results/demo_agent_explanation_contract_2026-10-15.json, request 18c26b5163e84c3fbc1e2dc54372e549. Technically successful (tools and LLM ok, validation_errors empty), but the accepted explanation contains unsupported interpretations: zeros imply inactivity, demo input implies a synthetic wallet, and a separate risky_tx_count rule implies a model-score contribution. This is not a semantically validated result.
+- The saved client sidecar identifies docs/demo_features_valid.json and explicitly limits its synthetic/demo note to an input example, not real wallet evidence. The saved result does not contain an exact generation prompt; context construction was inspected in the current code, not reconstructed as a historical prompt capture.
+- Existing context separated feature values, SHAP, rules and provenance into fields, but did not state the evidentiary boundaries strongly enough: not missing does not establish activity meaning; not SHAP causes does not clearly exclude score attribution; demo example provenance does not establish wallet origin. Raw structured risk also includes both top_features and rule_triggers, so their co-location must not imply common attribution.
+- Added a shared internal evidence contract in src/explanation_contract.py, passed to the LLM: SHAP supports local partial model attribution; rules support input predicates only; provenance describes the supplied example only; numeric zero alone does not establish inactivity. Clarified those boundaries in the prompt and the input-provenance note. No new wording requirements or content-rejection rules; existing fact checks and free-form explanation remain.
+- Added context-construction regression cases with different feature names, zero/nonzero values, positive/negative SHAP impacts, unknown rule definitions, a rule sharing a SHAP feature, and declared/unknown input origins. Rule evidence does not gain SHAP attribution even when names overlap.
+- Context clarification does not guarantee truthful generated prose. Existing bounded fact checks do not validate all semantic inferences; acceptance does not prove correctness. No new live result or measured improvement is claimed.
+- Tests, Ruff, mypy, Docker and Ollama: not_run (user instruction). No model, graph, data or API-schema changes; no commit/push.
+
+## Stage Handoff And Evidence Inventory On 2026-10-15
+
+This section supersedes earlier current-status summaries. Earlier validation entries are historical observations, not certification of the current working tree. This handoff updated documentation only and performed no new checks or service requests.
+
+Available local-check evidence:
+
+- The last local validation block recorded before the 2026-10-15 changes (Readable Fallback Copy Polish On 2026-10-13) reports targeted pytest 11 passed / 922 warnings, full pytest 107 passed / 929 warnings, Ruff All checks passed, and mypy no issues in 52 source files with the unchecked-untyped-test note. An earlier block reports 116 passed; neither count is evidence for the current files. The recorded counts are retained without inventing an execution order beyond the report sections.
+- The subsequently user-reported mypy error at src/explanation_contract.py:42 was addressed with an explicit value is not None guard before float(value). Existing None/zero parameter coverage was inspected; a successful mypy rerun after that fix is not evidenced here.
+- Current-stage targeted/full pytest, Ruff and mypy: not_run by this agent; no saved passing report tied to the current working tree was found. Do not carry historical green status forward.
+
+Available Docker/Ollama evidence:
+
+- docs/docker_api_review_smoke_2026-10-13.md and results/docker_api_health_ready_final_review_2026-10-13.json document the historical local Docker API readiness result: model, scoring adapter, retrieval index and corpus true. The historical SHAP-units explain rerun ended in deterministic fallback; it was not accepted LLM text. These observations do not certify the current container/image or working tree.
+- The latest available explain artifact is results/demo_agent_evidence_boundaries_2026-10-15.json, request 1644fe29c63a4ebe92661a45941dd81e. Scoring and SHAP are ok; risk.status=scored, data_status=ok, prediction=1, score=0.35894730197831315 above threshold=0.34438552759270996. Ollama qwen2.5:7b-instruct reports ok, done_reason=stop, error=null; validation_errors is empty and no fallback/replacement markers are present. The LLM explanation was accepted.
+- The latest client sidecar explicitly identifies a synthetic/demo input example, not real wallet evidence. The JSON does not identify an image digest/source revision or capture the exact generation prompt, so it does not prove which complete working-tree revision ran, nor independently establish a fresh Docker rebuild or health check.
+- This latest explain is technically successful but still has interpretation and language defects: unsupported natural-language feature definitions (including first deposit rendered as first record), repeated score/class summary and limitations, awkward wording and an unexplained shortened SHAP-number presentation. These are not evidence of production-quality explanations. The prior inactivity/synthetic-wallet/rule-attribution assertions are not repeated explicitly in this sample; one sample cannot establish their general resolution.
+- Quality on real data: not confirmed. Acceptance by bounded factual checks is not proof of semantic correctness, readability or calibrated fraud probability.
+- Docker build/health checks and Ollama requests during this handoff: not_run. No new runtime or local-check success is claimed.
+
+Operational status:
+
+- Remote deployment: not_run.
+- Rollback verification: not_run.
+- Commit/push: not_run.
+
+Exact intended commit allowlist, relative to ml-project (nothing staged or committed):
+
+```text
+app/api.py
+docs/progress.md
+docs/user_output_examples.md
+scripts/demo_agent.py
+src/agent.py
+src/explanation_contract.py
+src/inference.py
+tests/test_agent.py
+tests/test_demo_agent.py
+tests/test_explanation_contract.py
+tests/test_scored_explanations.py
+tests/test_scoring_contract.py
+```
+
+Exclude results/ and client_context sidecars, opt-in rejected-text diagnostics, logs, secrets/.env/credentials, local environments, model/data/index/MLflow artifacts (including mlflow_verification/), and unrelated untracked files. Also exclude docs/scored_explanation_changes_2026-10-15.patch: it is an intermediate historical diff, not the current patch. The allowlist includes only the stage implementation, regression tests and maintained documentation; use explicit paths rather than git add . or git add -A.

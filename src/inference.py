@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import shap
 
+from src.explanation_contract import RULE_DEFINITIONS
+
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".matplotlib"))
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -159,25 +161,24 @@ def get_rule_triggers(features):
 
     triggers = []
     risky_tx_count = values.get("risky_tx_count")
-    if risky_tx_count is not None and risky_tx_count > 20:
+    if risky_tx_count is not None and risky_tx_count > RULE_DEFINITIONS["risky_tx_count_gt_20"]["threshold"]:
         triggers.append(
             {
                 "rule": "risky_tx_count_gt_20",
                 "feature": "risky_tx_count",
                 "value": float(risky_tx_count),
-                "message": f"обнаружено {int(risky_tx_count)} рисковых транзакций",
+                "message": f"во входных данных risky_tx_count={risky_tx_count} > 20; это проверка признака, не подтверждение реальных транзакций",
             }
         )
 
     wallet_age = values.get("wallet_age")
-    if wallet_age is not None and wallet_age < 604800:
-        days = max(0, int(wallet_age // 86400))
+    if wallet_age is not None and wallet_age < RULE_DEFINITIONS["wallet_age_lt_7_days"]["threshold"]:
         triggers.append(
             {
                 "rule": "wallet_age_lt_7_days",
                 "feature": "wallet_age",
                 "value": float(wallet_age),
-                "message": f"кошелёк создан менее недели назад ({days} дней)",
+                "message": f"во входных данных wallet_age={wallet_age} < 604800; единицы возраста не подтверждены, возраст в днях не установлен",
             }
         )
 
