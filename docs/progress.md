@@ -1,6 +1,25 @@
 # Project Progress
 
-Last updated: 2026-10-12.
+Last updated: 2026-10-16.
+
+## Local Stage Completion On 2026-10-16
+
+This entry supersedes the historical current-status and commit-allowlist sections below for this documentation handoff. Final report: [Local stage completion](local_stage_completion_2026-10-16.md).
+
+- Local stage for commit `c44f0cc`: complete within the reported local operational scope. Environment: Ubuntu/WSL2 using the shared Docker Desktop; test API on port `8081`.
+- User-reported checks without LLM and with Ollama: successful. Artifact backup and startup using the restored copy of the same version: verified locally according to the user-provided results.
+- Last reported post-restore smoke: request_id `fca9ae7a6b4f40d48e26ef527a3da3a5`; Ubuntu file `monitoring/logs/wsl_after_restore_smoke.json`.
+- Evidence source: results supplied by the user in this conversation. The Ubuntu JSON is not present at that relative path in this Windows checkout and was not independently read; no WSL session or new runtime checks were started. No new pytest, Ruff or mypy result is claimed.
+- Open LLM errors: unsupported age in days and unsupported interpretation of activity. Technical success does not establish a fully correct explanation; production readiness is not confirmed.
+- Remote deployment: `not_run`. Rollback between different releases: `not_run`. Local same-version restore is verified within the user-reported scope and does not verify rollback between releases.
+- This handoff changes documentation only. Tests, Docker/API/Ollama requests, model/data changes, staging, commit and push: `not_run` by this agent.
+
+Current documentation-only commit allowlist (supersedes the historical implementation allowlist below):
+
+```text
+docs/local_stage_completion_2026-10-16.md
+docs/progress.md
+```
 
 ## Current Status
 
